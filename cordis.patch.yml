@@ -1,0 +1,3 @@
+- insert:
+    - id: lazy-tools
+      name: '@deepseek-ai/dsh-lazy-tools'

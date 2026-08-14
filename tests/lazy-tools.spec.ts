@@ -160,6 +160,18 @@ describe('deferred tool loading', () => {
     expect(ran.isError).toBe(false)
   })
 
+  it('an empty defer config installs no allow-list, so late tools stay visible', async () => {
+    // No `defer` entry: the plugin must not call `restrict({ allow: [] })`, which
+    // would hide every tool — including tools registered after the agent.
+    const { ctx } = await harness({ defer: [] })
+    ctx.tools.register(fixture('read_file', 'Read a local file'))
+    const agent = createAgent(ctx, 'no-defer')
+
+    ctx.tools.register(fixture('mcp_late', 'Late-registered capability'))
+    expect(schemaNames(ctx, agent)).toContain('read_file')
+    expect(schemaNames(ctx, agent)).toContain('mcp_late')
+  })
+
   it('guard tools are never deferred even under Defer(*)', async () => {
     const { ctx } = await harness({ defer: ['Defer(*)'] })
     const agent = createAgent(ctx, 'guards')

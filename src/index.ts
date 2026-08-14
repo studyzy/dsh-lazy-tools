@@ -118,13 +118,24 @@ export function apply(ctx: Context, config: Config): void {
     )
   }
 
-  /** Replace only this plugin's restriction, installing before lifting to avoid an open interval. */
+  /**
+   * Replace only this plugin's restriction, installing before lifting to avoid
+   * an open interval. When nothing is deferred there is no allow-list to
+   * install: an empty `defer` config must leave every tool visible, and a
+   * stale restriction from a previous catalog generation is lifted. This also
+   * covers surfaces where the global registry is empty at assembly time (the
+   * Web preset plane registers model-facing tools in ancestor scopes, so
+   * `ctx.tools.schemas()` reads zero) — without it, an empty `activeNames`
+   * would install `restrict({ allow: [] })` and hide every tool.
+   */
   function refreshRestriction(state: AgentState): void {
+    const liftPrevious = state.liftRestriction
+    state.liftRestriction = undefined
+    if (liftPrevious !== undefined) mutateRegistry(liftPrevious)
+    if (state.deferredNames.size === 0) return
     const allow = [...state.activeNames].sort()
     const liftNext = mutateRegistry(() => state.agent.ctx.tools.restrict({ allow }))
-    const liftPrevious = state.liftRestriction
     state.liftRestriction = liftNext
-    if (liftPrevious !== undefined) mutateRegistry(liftPrevious)
   }
 
   /** Build the per-agent {@link ToolsAccess} the two tools consume. */

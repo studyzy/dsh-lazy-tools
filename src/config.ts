@@ -8,7 +8,9 @@
  *
  * Semantics (highest precedence first): `noDefer` > `defer` > `deferToolLoading`.
  * `*` is the only wildcard and matches any character sequence; `Defer(*)`
- * defers everything except the tool_search / defer_execute_tool guards.
+ * defers everything except the guards. A config that names neither `defer` nor
+ * `noDefer` gets the shipped preset (defer everything, keep
+ * {@link DEFAULT_ACTIVE_TOOLS} callable) via {@link applyDefaultPreset}.
  * @module @deepseek-ai/dsh-lazy-tools/config
  */
 
@@ -29,6 +31,51 @@ export interface LazyToolsConfig {
   readonly noDefer?: readonly string[]
   /** Global switch; false disables all deferring. Default true. */
   readonly deferToolLoading?: boolean
+}
+
+/**
+ * The defer entry a fresh install uses: defer everything the guards do not
+ * protect.
+ */
+export const DEFER_ALL_ENTRY = 'Defer(*)'
+
+/**
+ * Tools a fresh install keeps directly callable. Everything else is deferred, so
+ * the model starts with a working coding core and loads the long tail on demand
+ * through `tool_search` — no configuration required.
+ */
+export const DEFAULT_ACTIVE_TOOLS = [
+  'read',
+  'write',
+  'edit',
+  'bash',
+  'glob',
+  'grep',
+  'web_search',
+  'web_fetch',
+  'ask_user_question',
+  'skill',
+] as const
+
+/**
+ * Resolve the configured patterns, applying the shipped preset when the config
+ * names neither `defer` nor `noDefer`.
+ *
+ * A zero-config install must be useful out of the box: defer the long tail and
+ * keep {@link DEFAULT_ACTIVE_TOOLS} callable. Naming either key replaces the
+ * preset completely, so the established semantics hold — `defer: []` still means
+ * "defer nothing", and `defer: ['glob']` still defers exactly `glob` (it is not
+ * re-protected by the preset).
+ * @param config - plugin config; an absent key stays `undefined`.
+ * @returns the patterns to compile.
+ */
+export function applyDefaultPreset(config: LazyToolsConfig): LazyToolsConfig {
+  const unconfigured = config.defer === undefined && config.noDefer === undefined
+  return {
+    defer: unconfigured ? [DEFER_ALL_ENTRY] : (config.defer ?? []),
+    noDefer: unconfigured ? [...DEFAULT_ACTIVE_TOOLS] : (config.noDefer ?? []),
+    deferToolLoading: config.deferToolLoading ?? true,
+  }
 }
 
 /** Outcome of compiling one config entry. */

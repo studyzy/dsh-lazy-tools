@@ -244,6 +244,47 @@ describe('deferred tool loading', () => {
     expect(await offered(ctx, agent)).toEqual([TOOL_SEARCH_NAME, DEFER_EXECUTE_TOOL_NAME].sort())
   })
 
+  it('a zero-config install keeps the shipped core callable and defers the long tail', async () => {
+    const ctx = new Context()
+    contexts.push(ctx)
+    await mountAgentLoopTestDependencies(ctx)
+    await ctx.plugin(AgentLoop, { agents: [] })
+    ctx.tools.register(fixture('read', 'Read a local file'))
+    ctx.tools.register(fixture('glob', 'Find files by pattern'))
+    ctx.tools.register(fixture('read_image', 'Read an image'))
+    ctx.tools.register(fixture('subagent', 'Spawn a subagent'))
+
+    // No configuration at all: the shipped preset must be in effect.
+    await ctx.plugin(LazyTools)
+
+    const agent = await createAgent(ctx, 'preset-default')
+    const names = await offered(ctx, agent)
+    expect(names).toContain('read')
+    expect(names).toContain('glob')
+    expect(names).toContain(TOOL_SEARCH_NAME)
+    expect(names).toContain(DEFER_EXECUTE_TOOL_NAME)
+    expect(names).not.toContain('read_image')
+    expect(names).not.toContain('subagent')
+
+    const found = await execute(ctx, agent, TOOL_SEARCH_NAME, { tool_names: ['read_image'] })
+    expect(found.isError ? undefined : found.value).toMatchObject({
+      matches: [{ name: 'read_image', status: 'loaded' }],
+    })
+    expect(await offered(ctx, agent)).toContain('read_image')
+  })
+
+  it('an explicit defer config replaces the shipped preset', async () => {
+    const { ctx } = await harness({ defer: ['glob'] })
+    ctx.tools.register(fixture('read', 'Read a local file'))
+    ctx.tools.register(fixture('glob', 'Find files by pattern'))
+    const agent = await createAgent(ctx, 'preset-replaced')
+
+    // glob ships in the preset core, but naming `defer` takes over completely.
+    const names = await offered(ctx, agent)
+    expect(names).toContain('read')
+    expect(names).not.toContain('glob')
+  })
+
   it('hot-loads existing agents and restores the original surface on plugin disposal', async () => {
     const ctx = new Context()
     contexts.push(ctx)
@@ -268,8 +309,7 @@ describe('deferred tool loading', () => {
     ctx.tools.register(fixture('glob', 'Find files by pattern'))
     const agent = await createAgent(ctx, 'unmanaged')
 
-    // A plugin instance with no defer patterns must not strip anything, and an
-    // agent that arrives while no plugin is mounted stays untouched.
+    // An agent that arrives while no plugin instance is mounted stays untouched.
     expect(await offered(ctx, agent)).toContain('glob')
   })
 

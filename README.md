@@ -21,6 +21,10 @@
 包括模型最终根本不会用到的工具。`dsh-lazy-tools` 颠覆了这个模型：工具
 默认被**延迟（deferred）**，只有当模型主动请求时才进入上下文。
 
+**装上即用、零配置**：默认延迟长尾工具，同时保留一组常驻编码核心
+（`read`/`write`/`edit`/`bash`/`glob`/`grep`/`web_search`/`web_fetch`/
+`ask_user_question`/`skill`，详见[默认行为](#默认行为)）。
+
 被延迟的工具会从**模型可见的工具列表**里剔除，因此它们的 schema（乃至名字）
 永远不会进入模型上下文。模型通过 `tool_search` 按需发现它们，激活后
 即可直接调用。
@@ -86,8 +90,22 @@ dsh plugin --profile <profile> add link:/path/to/dsh-lazy-tools
 
 ## 配置
 
-配置写在 profile 的 `cordis.patch.yml`（用户 patch 层）中该插件的 `config`
-字段下，使用 CodeBuddy 风格语法：
+**零配置即可用**：不写任何 `config` 时插件使用内置预设，装完就是这样。
+
+### 默认行为
+
+| | 内容 |
+|---|---|
+| 延迟 | `Defer(*)` —— 除守卫外全部延迟，模型按需 `tool_search` |
+| 常驻可用 | `read`、`write`、`edit`、`bash`、`glob`、`grep`、`web_search`、`web_fetch`、`ask_user_question`、`skill` |
+| 守卫（永不被延迟） | `tool_search`、`defer_execute_tool`、`run_code` |
+
+**一旦显式写了 `defer` 或 `noDefer` 中的任意一个键，预设就被完全替换**，一切按你写的来：
+`defer: []` 仍然是"不延迟任何工具"，`defer: ['glob']` 就是只延迟 `glob`
+（不会因为 `glob` 在默认核心里而被重新保护）。
+
+需要改默认时才写配置，位置是 profile 的 `cordis.patch.yml`（用户 patch 层）
+中该插件的 `config` 字段，使用 CodeBuddy 风格语法：
 
 ```yaml
 - id: lazy-tools
@@ -100,14 +118,26 @@ dsh plugin --profile <profile> add link:/path/to/dsh-lazy-tools
 
 | 键 | 类型 | 默认 | 说明 |
 |---|---|---|---|
-| `defer` | `string[]` | `[]` | 要延迟的工具名或 `Defer(pattern)` 条目。裸名等价于 `Defer(name)`。`*` 是唯一通配符——`Defer(*)` 延迟除守卫工具外的所有工具。 |
-| `noDefer` | `string[]` | `[]` | 必须保持可直接调用的工具名或 `NoDefer(pattern)` 条目。裸名等价于 `NoDefer(name)`。**始终优先于 `defer`。** |
+| `defer` | `string[]` | 见"默认行为" | 要延迟的工具名或 `Defer(pattern)` 条目。裸名等价于 `Defer(name)`。`*` 是唯一通配符——`Defer(*)` 延迟除守卫工具外的所有工具。 |
+| `noDefer` | `string[]` | 见"默认行为" | 必须保持可直接调用的工具名或 `NoDefer(pattern)` 条目。裸名等价于 `NoDefer(name)`。**始终优先于 `defer`。** |
 | `deferToolLoading` | `boolean` | `true` | 全局开关。为 `false` 时不延迟任何工具。 |
 
 修饰符大小写不敏感（`defer(bash)` ≡ `Defer(bash)`）。优先级（从高到低）：
 `noDefer` > `defer` > `deferToolLoading`。
 
 ### 示例
+
+```yaml
+# 把默认核心换成只有 bash 常驻（其余仍然全部延迟）
+config:
+  noDefer: ['bash']
+```
+
+```yaml
+# 只延迟这两个，其余保持可见
+config:
+  defer: ['glob', 'web_search']
+```
 
 ```yaml
 # 延迟所有 fetch_* / web_* 工具，始终保持 bash 可用
@@ -148,13 +178,13 @@ config:
 ### 流程
 
 ```
-Prompt: 只有 tool_search + defer_execute_tool 的 schema 可见
+Prompt: 只有守卫 + 常驻核心的 schema 可见（零配置默认即如此）
    │
    ▼
-model: tool_search({ tool_names: ["glob"] })
-   │  └─ 返回 glob 的匹配状态，并把它记入该 agent 的激活集合
+model: tool_search({ tool_names: ["todo_write"] })
+   │  └─ 返回匹配状态，并把它记入该 agent 的激活集合
    ▼
-下一轮: model 直接调用 glob（完整 schema 已进入工具列表）
+下一轮: model 直接调用 todo_write（完整 schema 已进入工具列表）
 ```
 
 ## 设计约束与已知限制

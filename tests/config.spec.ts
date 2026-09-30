@@ -1,6 +1,14 @@
 import { describe, it, expect } from 'vitest'
 import { RUN_CODE_NAME } from '@deepseek-ai/dsh-tools'
-import { parseEntry, compilePattern, resolveDeferConfig, type LazyToolsConfig } from '../src/config.ts'
+import {
+  applyDefaultPreset,
+  compilePattern,
+  DEFAULT_ACTIVE_TOOLS,
+  DEFER_ALL_ENTRY,
+  parseEntry,
+  resolveDeferConfig,
+  type LazyToolsConfig,
+} from '../src/config.ts'
 
 const ALL_TOOLS = [
   'read',
@@ -8,6 +16,23 @@ const ALL_TOOLS = [
   'edit',
   'write',
   'glob',
+  'web_search',
+  'tool_search',
+  'defer_execute_tool',
+  RUN_CODE_NAME,
+]
+
+/** Core tools plus a few long-tail ones, for the preset assertions. */
+const PRESET_CATALOG = [
+  'read',
+  'write',
+  'edit',
+  'bash',
+  'glob',
+  'grep',
+  'read_image',
+  'todo_write',
+  'subagent',
   'web_search',
   'tool_search',
   'defer_execute_tool',
@@ -136,5 +161,58 @@ describe('resolveDeferConfig', () => {
     const r = resolve({ defer: ['Defer(*)'], deferToolLoading: false })
     expect(r.defer).toEqual([])
     expect(r.enabled).toBe(false)
+  })
+})
+
+describe('applyDefaultPreset', () => {
+  it('ships a zero-config preset: defer everything, keep the coding core callable', () => {
+    const patterns = applyDefaultPreset({})
+    expect(patterns.defer).toEqual([DEFER_ALL_ENTRY])
+    expect(patterns.noDefer).toEqual([...DEFAULT_ACTIVE_TOOLS])
+    expect(patterns.deferToolLoading).toBe(true)
+
+    // The compiled result must leave exactly the core callable and defer the
+    // long tail.
+    const compiled = resolveDeferConfig(PRESET_CATALOG, patterns)
+    expect([...compiled.deferNames].sort()).toEqual(['read_image', 'subagent', 'todo_write'])
+    expect(PRESET_CATALOG.filter((name) => !compiled.deferNames.has(name)).sort()).toEqual([
+      'bash',
+      'defer_execute_tool',
+      'edit',
+      'glob',
+      'grep',
+      'read',
+      'run_code',
+      'tool_search',
+      'web_search',
+      'write',
+    ])
+  })
+
+  it('keeps deferToolLoading=false meaningful without other config', () => {
+    const patterns = applyDefaultPreset({ deferToolLoading: false })
+    expect(resolveDeferConfig(PRESET_CATALOG, patterns).deferNames.size).toBe(0)
+  })
+
+  it('lets an explicit config replace the preset entirely', () => {
+    // Naming `defer` must not silently re-protect the name through the preset
+    // core: `defer: ['glob']` defers glob even though glob ships in the core.
+    const patterns = applyDefaultPreset({ defer: ['glob'] })
+    expect(patterns.defer).toEqual(['glob'])
+    expect(patterns.noDefer).toEqual([])
+    expect([...resolveDeferConfig(PRESET_CATALOG, patterns).deferNames]).toEqual(['glob'])
+  })
+
+  it('keeps an explicit empty defer meaning "defer nothing"', () => {
+    const patterns = applyDefaultPreset({ defer: [] })
+    expect(patterns.defer).toEqual([])
+    expect(patterns.noDefer).toEqual([])
+    expect(resolveDeferConfig(PRESET_CATALOG, patterns).deferNames.size).toBe(0)
+  })
+
+  it('lets an explicit noDefer stand alone', () => {
+    const patterns = applyDefaultPreset({ noDefer: ['bash'] })
+    expect(patterns.defer).toEqual([])
+    expect(patterns.noDefer).toEqual(['bash'])
   })
 })

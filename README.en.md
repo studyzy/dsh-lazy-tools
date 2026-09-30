@@ -22,6 +22,11 @@ prompt — even tools the model never ends up using. `dsh-lazy-tools` flips that
 model around: tools are **deferred** by default and only enter the context
 when the model asks for them.
 
+**Works out of the box, zero configuration**: the long tail is deferred while a
+coding core stays available (`read`, `write`, `edit`, `bash`, `glob`, `grep`,
+`web_search`, `web_fetch`, `ask_user_question`, `skill` — see
+[Defaults](#defaults)).
+
 Deferred tools are removed from the **tool list the model sees**, so their
 schemas (and names) never reach the model context. The model discovers them on
 demand through `tool_search`, then calls them directly after activation.
@@ -94,8 +99,25 @@ dsh plugin --profile <profile> add link:/path/to/dsh-lazy-tools
 
 ## Configuration
 
-Configuration lives in the plugin's `config` field in the profile's
-`cordis.patch.yml` (the user patch layer), using CodeBuddy-style syntax:
+**No configuration is required**: with no `config` at all the plugin runs its
+built-in preset, which is what you get right after installing it.
+
+### Defaults
+
+| | Contents |
+|---|---|
+| Deferred | `Defer(*)` — everything but the guards, discovered on demand via `tool_search` |
+| Always available | `read`, `write`, `edit`, `bash`, `glob`, `grep`, `web_search`, `web_fetch`, `ask_user_question`, `skill` |
+| Guards (never deferred) | `tool_search`, `defer_execute_tool`, `run_code` |
+
+**Naming either `defer` or `noDefer` replaces the preset entirely**, so
+everything follows what you wrote: `defer: []` still means "defer nothing", and
+`defer: ['glob']` defers exactly `glob` — it is not re-protected just because
+`glob` ships in the default core.
+
+Configure only to change that default. Configuration lives in the plugin's
+`config` field in the profile's `cordis.patch.yml` (the user patch layer), using
+CodeBuddy-style syntax:
 
 ```yaml
 - id: lazy-tools
@@ -108,14 +130,26 @@ Configuration lives in the plugin's `config` field in the profile's
 
 | Key | Type | Default | Description |
 |---|---|---|---|
-| `defer` | `string[]` | `[]` | Tool names or `Defer(pattern)` entries to defer. Bare names are equivalent to `Defer(name)`. `*` is the only wildcard — `Defer(*)` defers everything except the guard tools. |
-| `noDefer` | `string[]` | `[]` | Tool names or `NoDefer(pattern)` entries that must stay directly callable. Bare names are equivalent to `NoDefer(name)`. **Always wins over `defer`.** |
+| `defer` | `string[]` | see Defaults | Tool names or `Defer(pattern)` entries to defer. Bare names are equivalent to `Defer(name)`. `*` is the only wildcard — `Defer(*)` defers everything except the guard tools. |
+| `noDefer` | `string[]` | see Defaults | Tool names or `NoDefer(pattern)` entries that must stay directly callable. Bare names are equivalent to `NoDefer(name)`. **Always wins over `defer`.** |
 | `deferToolLoading` | `boolean` | `true` | Global switch. When `false`, nothing is deferred. |
 
 Modifiers are case-insensitive (`defer(bash)` ≡ `Defer(bash)`). Precedence
 (highest first): `noDefer` > `defer` > `deferToolLoading`.
 
 ### Examples
+
+```yaml
+# Replace the default core with bash only (everything else stays deferred)
+config:
+  noDefer: ['bash']
+```
+
+```yaml
+# Defer just these two and keep everything else visible
+config:
+  defer: ['glob', 'web_search']
+```
 
 ```yaml
 # Defer every fetch_* / web_* tool, keep bash always available
@@ -156,13 +190,13 @@ config:
 ### Flow
 
 ```
-Prompt: only tool_search + defer_execute_tool schemas are visible
+Prompt: only the guards + always-on core schemas are visible (the zero-config default)
    │
    ▼
-model: tool_search({ tool_names: ["glob"] })
-   │  └─ returns glob's match status, records it in the agent's activation set
+model: tool_search({ tool_names: ["todo_write"] })
+   │  └─ returns the match status, records it in the agent's activation set
    ▼
-next turn: model calls glob directly (full schema now in the tools list)
+next turn: model calls todo_write directly (full schema now in the tools list)
 ```
 
 ## Design constraints & known limitations

@@ -23,7 +23,11 @@
  * assembly for discovery. Works with any model/provider — it is purely
  * agent-layer.
  *
- * Configuration (CodeBuddy semantics, precedence noDefer > defer >
+ * A **zero-config install is useful out of the box**: the shipped preset defers
+ * the long tail and keeps a coding core callable — `read`, `write`, `edit`,
+ * `bash`, `glob`, `grep`, `web_search`, `web_fetch`, `ask_user_question`,
+ * `skill`, plus the search/execute guards. Configuration is only needed to
+ * change that default (CodeBuddy semantics, precedence noDefer > defer >
  * deferToolLoading):
  *
  * ```yaml
@@ -34,6 +38,9 @@
  *     noDefer: ['bash']
  *     deferToolLoading: true
  * ```
+ *
+ * Naming either `defer` or `noDefer` replaces the preset entirely, so
+ * `defer: []` keeps its meaning of "defer nothing".
  * @module @deepseek-ai/dsh-lazy-tools
  */
 
@@ -42,7 +49,7 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { ToolSchema } from '@deepseek-ai/dsh-llm'
 import type { AssembleContext, PromptAssembly } from '@deepseek-ai/dsh-system-prompt'
 import z from '@deepseek-ai/schemastery'
-import { resolveDeferConfig, type LazyToolsConfig } from './config.ts'
+import { applyDefaultPreset, resolveDeferConfig, type LazyToolsConfig } from './config.ts'
 import { buildTools, type LoadStatus, type ToolsAccess } from './tools.ts'
 
 /** Cordis plugin name. */
@@ -66,8 +73,12 @@ export interface Config {
 
 /** Schemastery validation and defaults for {@link Config}. */
 export const Config: z<Config> = z.object({
-  defer: z.array(z.string()).default([]),
-  noDefer: z.array(z.string()).default([]),
+  // `default(undefined)` keeps an absent key absent instead of materializing it
+  // as `[]`, which is what lets apply() tell "unconfigured" from an explicit
+  // `defer: []` ("defer nothing"). The cast covers a default the typings do not
+  // model; the key is simply absent at runtime.
+  defer: z.array(z.string()).default(undefined as unknown as string[]),
+  noDefer: z.array(z.string()).default(undefined as unknown as string[]),
   deferToolLoading: z.boolean().default(true),
 })
 
@@ -95,11 +106,7 @@ interface AgentState {
  * @param config - deferred-tool visibility patterns.
  */
 export function apply(ctx: Context, config: Config): void {
-  const resolved: LazyToolsConfig = {
-    defer: config.defer ?? [],
-    noDefer: config.noDefer ?? [],
-    deferToolLoading: config.deferToolLoading ?? true,
-  }
+  const resolved: LazyToolsConfig = applyDefaultPreset(config)
   const states = new Map<Agent, AgentState>()
 
   /**

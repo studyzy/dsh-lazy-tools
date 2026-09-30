@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest'
+import { RUN_CODE_NAME } from '@deepseek-ai/dsh-tools'
 import { parseEntry, compilePattern, resolveDeferConfig, type LazyToolsConfig } from '../src/config.ts'
 
 const ALL_TOOLS = [
@@ -10,6 +11,7 @@ const ALL_TOOLS = [
   'web_search',
   'tool_search',
   'defer_execute_tool',
+  RUN_CODE_NAME,
 ]
 
 function resolve(cfg: LazyToolsConfig): { defer: string[]; noDefer: string[]; enabled: boolean } {
@@ -123,6 +125,11 @@ describe('resolveDeferConfig', () => {
     const r = resolve({ defer: ['Defer(*)'] })
     expect(r.defer.includes('tool_search')).toBe(false)
     expect(r.defer.includes('defer_execute_tool')).toBe(false)
+    // The reserved PTC transport is the only tool a ptc-mode agent sees, so it
+    // must survive Defer(*) too.
+    expect(r.defer.includes(RUN_CODE_NAME)).toBe(false)
+    // Everything else, bash included, is deferred.
+    expect(r.defer).toContain('bash')
   })
 
   it('deferToolLoading=false disables deferring', () => {

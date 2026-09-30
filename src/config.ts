@@ -12,8 +12,14 @@
  * @module @deepseek-ai/dsh-lazy-tools/config
  */
 
-/** Tools that must never be deferred; the search/execute pair would self-lock. */
-export const GUARD_TOOLS = ['tool_search', 'defer_execute_tool'] as const
+import { RUN_CODE_NAME } from '@deepseek-ai/dsh-tools'
+
+/**
+ * Tools that must never be deferred: the search/execute pair would self-lock,
+ * and the reserved presentation transport is not a capability the model may be
+ * locked out of (a PTC-mode agent whose only tool was hidden would see nothing).
+ */
+export const GUARD_TOOLS = ['tool_search', 'defer_execute_tool', RUN_CODE_NAME] as const
 
 /** Resolved plugin config surface after schemastery validation. */
 export interface LazyToolsConfig {

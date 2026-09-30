@@ -1,10 +1,9 @@
 /**
  * Model-facing tool definitions for `tool_search` and `defer_execute_tool`.
  *
- * Both tools are registered per-agent on the agent's own scope, so they stay
- * visible regardless of any `restrict()` filtering (which only affects the
- * inherited layer). They operate on the per-agent state through an injected
- * accessor to keep this module free of agent-lifecycle plumbing.
+ * Both tools are registered per-agent on the agent's own scope, so they are
+ * themselves never deferred. They operate on the per-agent state through an
+ * injected accessor to keep this module free of agent-lifecycle plumbing.
  * @module @deepseek-ai/dsh-lazy-tools/tools
  */
 
@@ -25,15 +24,18 @@ export interface ToolMatch {
 
 /** State operations `tool_search` / `defer_execute_tool` need from the plugin. */
 export interface ToolsAccess {
-  /** The full global search catalog (deferred + active schemas). */
+  /** The calling agent's catalog: every schema its assemblies offered, deferred included. */
   readonly catalog: readonly ToolSchema[]
-  /** Tools currently deferred for the calling agent (not yet visible). */
+  /** Tools currently withheld for the calling agent. */
   readonly deferredNames: ReadonlySet<string>
   /** Activate tools for the calling agent; returns the resulting status per name. */
   activate(names: readonly string[]): Map<string, LoadStatus>
 }
 
 const RESULT_STATUSES = ['loaded', 'already_loaded', 'unavailable'] as const
+
+/** Description shown for a name the agent cannot reach at all. */
+const UNREACHABLE_DESCRIPTION = 'No such tool is reachable from this agent.'
 
 /** Render a compact model-facing result; full schemas ride the next request. */
 function renderSearch(value: { matches: readonly ToolMatch[]; remainingDeferred: number }): string {
@@ -44,16 +46,10 @@ function renderSearch(value: { matches: readonly ToolMatch[]; remainingDeferred:
 
 const TEXT = (text: string): ContentBlock => ({ type: 'text', text })
 
-/** Resolve one `ToolSchema` to a renderable match. */
-function toMatch(schema: ToolSchema, status: LoadStatus): ToolMatch {
-  return { name: schema.name, description: schema.description, status }
-}
-
-/** Resolve requested tool names against the catalog, activating each match. */
-function activateNames(access: ToolsAccess, names: readonly string[]): Map<string, LoadStatus> {
-  const byName = new Map(access.catalog.map((schema) => [schema.name, schema]))
-  const valid = names.filter((name) => byName.has(name))
-  return access.activate(valid)
+/** Resolve one requested name to a renderable match against the catalog. */
+function toMatch(access: ToolsAccess, name: string, status: LoadStatus): ToolMatch {
+  const schema = access.catalog.find((candidate) => candidate.name === name)
+  return { name, description: schema?.description ?? UNREACHABLE_DESCRIPTION, status }
 }
 
 /**
@@ -127,24 +123,21 @@ export function buildTools(access: ToolsAccess): {
       const top_k = args.top_k ?? 5
 
       const results = new Map<string, LoadStatus>()
+      // Exact names are answered even when the tool is unreachable, so the model
+      // learns the capability is absent instead of reading an empty result.
       for (const name of tool_names) {
-        for (const [activatedName, status] of activateNames(access, [name])) {
+        for (const [activatedName, status] of access.activate([name])) {
           results.set(activatedName, status)
         }
       }
       for (const query of queries) {
         const found = searchSchemas(query, access.catalog, top_k)
-        for (const [activatedName, status] of activateNames(access, found)) {
+        for (const [activatedName, status] of access.activate(found)) {
           if (!results.has(activatedName)) results.set(activatedName, status)
         }
       }
 
-      const matches = [...results.entries()]
-        .map(([name, status]) => {
-          const schema = access.catalog.find((candidate) => candidate.name === name)
-          return schema === undefined ? null : toMatch(schema, status)
-        })
-        .filter((match): match is ToolMatch => match !== null)
+      const matches = [...results.entries()].map(([name, status]) => toMatch(access, name, status))
       return Promise.resolve({ matches, remainingDeferred: access.deferredNames.size })
     },
   })
@@ -185,9 +178,6 @@ export function buildTools(access: ToolsAccess): {
     }),
     execute: (args) => {
       const name = args.toolName
-      if (!access.catalog.some((schema) => schema.name === name)) {
-        return Promise.resolve({ toolName: name, status: 'unavailable' as const })
-      }
       const status = access.activate([name]).get(name) ?? 'unavailable'
       return Promise.resolve({ toolName: name, status })
     },

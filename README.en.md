@@ -22,16 +22,21 @@ prompt — even tools the model never ends up using. `dsh-lazy-tools` flips that
 model around: tools are **deferred** by default and only enter the context
 when the model asks for them.
 
-Deferred tools are removed from the agent's visible tool set, so their schemas
-(and names) never reach the model context. The model discovers them on demand
-through `tool_search`, then calls them directly after activation.
+Deferred tools are removed from the **tool list the model sees**, so their
+schemas (and names) never reach the model context. The model discovers them on
+demand through `tool_search`, then calls them directly after activation.
+
+Removal happens on the `system-prompt/assemble` waterfall — the per-scope tool
+list the agent loop actually sends (it becomes the request header and the
+provider's tool declarations). The plugin never mutates the tool registry, so it
+does not care which plane a tool comes from.
 
 This is a **pure exposure-control layer**:
 
 - It does **not** own or implement any tools.
-- Deferred tools are global-registry tools (including third-party/MCP tools);
-  this plugin only holds their `name` / `description` / `parameters` for
-  discovery.
+- Deferred tools are ordinary registry tools (host composition, agent preset,
+  third-party/MCP tools); this plugin only observes their `name` /
+  `description` / `parameters` in the model-facing list for discovery.
 - It **cannot proxy execution** — `tool_search` / `defer_execute_tool` only
   *activate* a tool, after which the model calls that tool directly.
 
@@ -45,18 +50,20 @@ or OpenAI's deferred-tool input items.
 - 🔍 **On-demand discovery** — `tool_search` looks tools up by exact name
   (`tool_names`) or by keyword (`queries`, Chinese and English), activating a
   match when found.
-- ⚡ **Lazy activation** — matched tools are added to the agent's visible set
-  and become directly callable from the next model request.
+- ⚡ **Lazy activation** — matched tools are recorded in the agent's activation
+  set and become directly callable from the next model request.
 - ⚡ **Activate by name** — `defer_execute_tool` activates a known tool by its
   exact name.
-- 🧭 **Non-intrusive** — visibility is filtered via `ctx.tools.restrict()` on
-  `agent.ctx`, intersecting with existing parent/child restrictions and never
-  widening any other policy.
+- 🧭 **Non-intrusive** — the registry is never touched: the plugin only
+  subtracts from the model-facing tool list on `system-prompt/assemble`, so it
+  coexists with every other `restrict`, every tool source, and every plane, and
+  never widens another policy.
 - 🎛️ **Flexible configuration** — CodeBuddy-style `Defer(...)` / `NoDefer(...)`
   patterns with `*` wildcards and a global `deferToolLoading` switch.
 - 🛡️ **Self-safe guards** — `tool_search` and `defer_execute_tool` are
-  registered on the agent's own scope and never deferred, so `Defer(*)` cannot
-  lock the system out.
+  registered on the agent's own scope and never deferred, and the reserved
+  `run_code` transport is pinned the same way, so `Defer(*)` cannot lock the
+  system out.
 
 ## Installation
 
@@ -69,10 +76,26 @@ dsh plugin --profile <profile> add git:github.com/studyzy/dsh-lazy-tools
 > You may also `git clone` it locally and install from the directory. The
 > bundle injects a plugin named `lazy-tools` via `cordis.patch.yml`.
 
+### Compatibility
+
+This plugin targets **DeepSeek Harness 0.2.0-rc.2** (`@deepseek-ai/dsh-*`
+0.2.0-rc.2, `@deepseek-ai/cordis` 4.0.4, `@deepseek-ai/schemastery` 3.18.4).
+Those exact versions are declared in `peerDependencies`, so DSH's plugin
+compatibility preflight accepts the bundle:
+
+```bash
+# local directory install (refresh the profile dependency tree after changing deps)
+dsh plugin --profile <profile> add link:/path/to/dsh-lazy-tools
+```
+
+> If a DSH upgrade reports mismatched peers, align `peerDependencies` /
+> `devDependencies` to the new `@deepseek-ai/dsh-*` versions, rerun
+> `pnpm install && pnpm run check`, then repeat the `add` command above.
+
 ## Configuration
 
 Configuration lives in the plugin's `config` field in the profile's
-`cordis.yml`, using CodeBuddy-style syntax:
+`cordis.patch.yml` (the user patch layer), using CodeBuddy-style syntax:
 
 ```yaml
 - id: lazy-tools
@@ -108,6 +131,13 @@ config:
 ```
 
 ```yaml
+# Defer everything but keep a small always-on core (noDefer wins over Defer(*))
+config:
+  defer: ['Defer(*)']
+  noDefer: ['read', 'write', 'edit', 'bash']
+```
+
+```yaml
 # Defer the MCP gateway tools by prefix
 config:
   defer: ['mcp*']
@@ -117,10 +147,11 @@ config:
 
 | Component | Role |
 |---|---|
-| `tool_search` | Searches tools that are not currently visible. `tool_names` does an exact lookup, `queries` does a keyword lookup (Chinese and English). Matches are added to the agent's visible set and returned. |
+| `tool_search` | Searches tools that are not currently visible. `tool_names` does an exact lookup, `queries` does a keyword lookup (Chinese and English). Matches are activated and returned. |
 | `defer_execute_tool` | Activates a deferred tool by exact name so the model can call it directly. Useful for activating a tool the model already knows about. |
+| Hiding | On `system-prompt/assemble`, deferred tools are filtered out of that scope's model-facing tool list (the registry itself is untouched). |
 | Interception | A `tools/pre-execute` listener returns `deny` when the model calls a not-yet-loaded deferred tool directly, pointing back to `tool_search` / `defer_execute_tool`. |
-| Activation | Matched tools are written into the agent's `restrict({ allow })` set and become model-visible and directly callable from the next model request. |
+| Activation | Matched tools are recorded in the agent's activation set and appear in the tool list — directly callable — from the next model request. |
 
 ### Flow
 
@@ -129,7 +160,7 @@ Prompt: only tool_search + defer_execute_tool schemas are visible
    │
    ▼
 model: tool_search({ tool_names: ["glob"] })
-   │  └─ returns glob's match status, adds it to the agent's visible set
+   │  └─ returns glob's match status, records it in the agent's activation set
    ▼
 next turn: model calls glob directly (full schema now in the tools list)
 ```
@@ -144,25 +175,36 @@ next turn: model calls glob directly (full schema now in the tools list)
 - **Deferred tools are invisible until searched.** The model does not see
   deferred tools' names; it relies on `tool_search`'s retrieval to discover
   them.
-- **Restrictions intersect.** The plugin only installs its own `allow` subset
-  and never widens other `restrict` calls (e.g. parent/child policy). A tool
-  denied by another policy is reported `unavailable` even when a search matches
-  it.
+- **Restrictions compose for free.** The plugin only subtracts from the
+  model-facing list and never widens other `restrict` calls (e.g. parent/child
+  policy). A tool denied by another policy never reaches the model-facing list
+  or the search catalog, so a lookup reports it `unavailable`.
+- **Tool origin does not matter.** Host composition, agent presets (on the
+  Web/Desktop surfaces every model-facing tool is mounted by a preset), MCP
+  servers, and tools registered after the agent was created all go through the
+  same deferral/search path.
+- **PTC presentation degrades to a no-op.** An agent presented in `ptc` mode
+  only sees the reserved `run_code` transport (pinned as a guard, never
+  deferred) and reaches other capabilities through the generated SDK; deferral
+  does not hide them there — it does not error, it simply has no effect.
 - **State is not persisted across sessions.** The loaded-tool set lives only
   for the current process; a resumed/forked agent re-defers per configuration.
   This avoids writing custom session events that are not registered in
   `KNOWN_SESSION_EVENT_TYPES`.
-- **Global tools only.** Tools already registered on the agent's own scope stay
-  visible and never enter the deferred catalog.
+- **Tools in the agent's own scope are never taken over.** Tools registered in
+  that agent's own scope (`tool_search` / `defer_execute_tool` themselves) stay
+  visible; `Defer(*)` does not apply to them.
 
 ## Development
 
 ```bash
 pnpm install
-pnpm run typecheck   # TypeScript type check
-pnpm test            # vitest unit + integration tests
-pnpm run lint        # oxlint
-pnpm run build       # tsc + tsdown bundle into lib/
+pnpm run typecheck        # TypeScript type check (src)
+pnpm run typecheck:tests  # TypeScript type check (tests)
+pnpm test                 # vitest unit + integration tests
+pnpm run lint             # oxlint
+pnpm run build            # tsc + tsdown bundle into lib/
+pnpm run check            # lint + both typechecks + tests + build
 ```
 
 ## License

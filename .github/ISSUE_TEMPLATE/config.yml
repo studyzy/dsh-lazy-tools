@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: DeepSeek Harness issue
+    url: https://github.com/deepseek-ai/deepseek-harness/issues
+    about: Problems with the harness itself (tools failing, model requests, the app) belong there, not here.
+  - name: Security report
+    url: https://github.com/studyzy/dsh-lazy-tools/blob/master/SECURITY.md
+    about: Please report vulnerabilities privately, not as a public issue.

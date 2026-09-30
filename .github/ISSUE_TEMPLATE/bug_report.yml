@@ -1,0 +1,73 @@
+name: Bug report
+description: Something behaved differently than the documentation says
+title: 'bug: '
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. A few details make these much faster to fix —
+        please fill in what you can.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Include the exact tool names, the model's calls, and what you saw instead.
+      placeholder: |
+        I configured `defer: ['Defer(*)']` and called tool_search with
+        tool_names: ["read"], but ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect instead?
+    validations:
+      required: true
+
+  - type: input
+    id: dsh-version
+    attributes:
+      label: DeepSeek Harness version
+      description: The `@deepseek-ai/dsh-*` version, or the app version from the About dialog.
+      placeholder: 0.2.0-rc.2
+    validations:
+      required: true
+
+  - type: input
+    id: plugin-version
+    attributes:
+      label: Plugin version or commit
+      description: The commit you linked into your profile (`git rev-parse --short HEAD`).
+      placeholder: 1ed07e8
+    validations:
+      required: true
+
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Which surface?
+      options:
+        - Desktop app
+        - dsh web
+        - TUI
+        - headless
+        - Other / not sure
+    validations:
+      required: true
+
+  - type: textarea
+    id: config
+    attributes:
+      label: Plugin configuration
+      description: The `lazy-tools` row from your profile's `cordis.patch.yml`, if you set one.
+      render: yaml
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant log output
+      description: App logs and/or the `tool_search` result. Lines mentioning `lazy-tools` matter most.
+      render: shell

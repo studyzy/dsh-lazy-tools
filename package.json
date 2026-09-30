@@ -31,6 +31,15 @@
     "README.en.md"
   ],
   "license": "MIT",
+  "author": "DevinZeng <studyzy@gmail.com>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/studyzy/dsh-lazy-tools.git"
+  },
+  "homepage": "https://github.com/studyzy/dsh-lazy-tools#readme",
+  "bugs": {
+    "url": "https://github.com/studyzy/dsh-lazy-tools/issues"
+  },
   "keywords": [
     "dsh",
     "deepseek-harness",

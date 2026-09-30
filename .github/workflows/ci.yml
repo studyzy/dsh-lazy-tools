@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+# The workflow only reads the repository; keep the token minimal.
+permissions:
+  contents: read
+
+# A new push to the same branch supersedes the previous run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: check (node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Both lines of `engines.node` in package.json.
+        node: ['22.x', '24.x']
+    steps:
+      - name: Check out
+        uses: actions/checkout@v7
+
+      # Reads `packageManager: pnpm@11.7.0` from package.json.
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: ${{ matrix.node }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm run lint
+
+      - name: Typecheck sources
+        run: pnpm run typecheck
+
+      - name: Typecheck tests
+        run: pnpm run typecheck:tests
+
+      - name: Test
+        run: pnpm run test
+
+      - name: Build
+        run: pnpm run build

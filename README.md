@@ -9,6 +9,10 @@
 
 *减少 token 消耗 · 缩小上下文窗口 · 保持工具可发现*
 
+[![CI](https://github.com/studyzy/dsh-lazy-tools/actions/workflows/ci.yml/badge.svg)](https://github.com/studyzy/dsh-lazy-tools/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Node](https://img.shields.io/badge/node-%5E22.19.0%20%7C%7C%20%3E%3D24.0.0-brightgreen)](package.json)
+
 [English](README.en.md)
 
 </div>
@@ -222,6 +226,11 @@ pnpm run build            # tsc + tsdown 打包到 lib/
 pnpm run check            # lint + 两次类型检查 + 测试 + 构建
 ```
 
+贡献流程、目录结构、以及在真实 Harness 里试插件的步骤见
+[CONTRIBUTING.md](CONTRIBUTING.md)；版本变更记录见 [CHANGELOG.md](CHANGELOG.md)；
+安全问题请按 [SECURITY.md](SECURITY.md) 私下报告。CI 在 Node 22 / 24 上跑
+lint、两次类型检查、测试与构建（见 [.github/workflows/ci.yml](.github/workflows/ci.yml)）。
+
 ## License
 
-本项目以 MIT 许可证发布。
+本项目以 MIT 许可证发布（见 [LICENSE](LICENSE)）。

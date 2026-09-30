@@ -9,6 +9,10 @@ the model's context until they are actually needed.
 
 *Reduce token usage · shrink the context window · keep tooling discoverable*
 
+[![CI](https://github.com/studyzy/dsh-lazy-tools/actions/workflows/ci.yml/badge.svg)](https://github.com/studyzy/dsh-lazy-tools/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Node](https://img.shields.io/badge/node-%5E22.19.0%20%7C%7C%20%3E%3D24.0.0-brightgreen)](package.json)
+
 [中文](README.md)
 
 </div>
@@ -241,6 +245,12 @@ pnpm run build            # tsc + tsdown bundle into lib/
 pnpm run check            # lint + both typechecks + tests + build
 ```
 
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the contribution flow, the source
+layout, and how to try a change inside a real harness; [CHANGELOG.md](CHANGELOG.md)
+for release history; and [SECURITY.md](SECURITY.md) to report a vulnerability
+privately. CI runs lint, both typechecks, tests and the build on Node 22 and 24
+(see [.github/workflows/ci.yml](.github/workflows/ci.yml)).
+
 ## License
 
-This project is released under the MIT License.
+This project is released under the MIT License — see [LICENSE](LICENSE).

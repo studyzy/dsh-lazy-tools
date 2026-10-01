@@ -14,6 +14,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `ask_user_question` and `skill` directly callable, so the plugin is useful
   without writing any configuration. Naming `defer` or `noDefer` replaces the
   preset entirely, so `defer: []` still means "defer nothing".
+- **Per-project auto-tuning.** The first session to report a working directory
+  mines that project's last 30 days of persisted session history
+  (`~/.dsh/sessions/<project>/`), ranks tools by `tool/call` frequency, and
+  keeps the top `autoTuneTopN` (20 by default) active while deferring the rest.
+  A `defer_execute_tool` call counts as usage of the tool it activates, so a
+  tool the model keeps reaching for promotes itself out of the deferred set.
+  Tuning is skipped entirely below `autoTuneMinSamples` (200) in-window calls,
+  and a project is refreshed at most once per local calendar day.
+- **Global + per-project configuration layers.** The `defer`/`noDefer` written
+  in the profile is the global rule for every project; auto-tuning records its
+  result in a separate per-project store (`~/.dsh/lazy-tools/projects.json`)
+  keyed by absolute project path. Precedence is project override > global, and a
+  project entry replaces the pattern pair rather than merging it, so a global
+  `Defer(git_*)` cannot keep deferring a tool inside a tuned project. The global
+  configuration is never rewritten by a scan.
 - CI workflow (lint, both typechecks, tests and build on Node 22 and 24),
   Dependabot configuration, issue and pull-request templates, and the standard
   community files (`LICENSE`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`,

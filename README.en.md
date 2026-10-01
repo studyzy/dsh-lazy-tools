@@ -73,6 +73,14 @@ or OpenAI's deferred-tool input items.
   registered on the agent's own scope and never deferred, and the reserved
   `run_code` transport is pinned the same way, so `Defer(*)` cannot lock the
   system out.
+- 📊 **Per-project auto-tuning** — the first session to report a working
+  directory scans that project's last 30 days of session history and ranks tools
+  by `tool/call` frequency, keeping the top 20 active and deferring the rest.
+- 🗂️ **Global + per-project layers** — the global `defer`/`noDefer` you write
+  applies to every project; auto-tuning records its result in a separate
+  per-project store that overrides the global rules for that project only.
+  Precedence is **project override > global**, and the global configuration is
+  never rewritten by a scan.
 
 ## Installation
 
@@ -137,9 +145,128 @@ CodeBuddy-style syntax:
 | `defer` | `string[]` | see Defaults | Tool names or `Defer(pattern)` entries to defer. Bare names are equivalent to `Defer(name)`. `*` is the only wildcard — `Defer(*)` defers everything except the guard tools. |
 | `noDefer` | `string[]` | see Defaults | Tool names or `NoDefer(pattern)` entries that must stay directly callable. Bare names are equivalent to `NoDefer(name)`. **Always wins over `defer`.** |
 | `deferToolLoading` | `boolean` | `true` | Global switch. When `false`, nothing is deferred. |
+| `autoTune` | `boolean` | `true` | Whether to derive `defer`/`noDefer` from this project's session history; see Per-project auto-tuning. |
+| `autoTuneWindowDays` | `number` | `30` | Length of the history window in days. |
+| `autoTuneTopN` | `number` | `20` | How many of the most-used tools stay active. |
+| `autoTuneMinSamples` | `number` | `200` | In-window calls required before the configuration may be rewritten. |
 
 Modifiers are case-insensitive (`defer(bash)` ≡ `Defer(bash)`). Precedence
 (highest first): `noDefer` > `defer` > `deferToolLoading`.
+
+## Configuration layers: global + per-project
+
+Configuration resolves in two layers, with **project override > global**:
+
+| Layer | Stored in | Written by | Applies to |
+|---|---|---|---|
+| **Global** | `config.defer` / `config.noDefer` in the profile's `cordis.patch.yml` | you, by hand | every project |
+| **Per-project** | `~/.dsh/lazy-tools/projects.json` | the history scan | that project only |
+
+A generated entry also records `tunedAt` (its last refresh), `sampleCalls` (the
+invocations the ranking was built from), and `sessions` (how many contributed),
+so you can judge how fresh and how well-supported that configuration is.
+
+Resolution: a project with an entry in the store uses it; every other project
+falls back to the global configuration. **Auto-tuning writes only the
+per-project store and never touches your global configuration**, so working
+across many repositories cannot let one project's scan clobber the rules you
+wrote by hand.
+
+What `projects.json` looks like (keys are absolute project paths):
+
+```json
+{
+  "version": 1,
+  "projects": {
+    "/Users/me/Code/api": {
+      "defer": ["Defer(*)"],
+      "noDefer": ["bash", "edit", "read"],
+      "tunedAt": 1790000000000,
+      "sampleCalls": 412,
+      "sessions": 6
+    }
+  }
+}
+```
+
+A project entry **replaces** the `defer`/`noDefer` pair rather than merging it:
+otherwise a global `Defer(git_*)` would keep applying inside that project and a
+tool would be deferred by both rules with no way to re-enable it per project.
+Global knobs unrelated to the pattern pair (`deferToolLoading`, the `autoTune*`
+settings) are still inherited.
+
+> To clear one project's auto-tuning, delete its entry from `projects.json` (or
+> the whole file). That project immediately falls back to the global config.
+
+## Per-project auto-tuning
+
+When enabled (the default), the plugin learns from real usage **per project**:
+the first session to report a working directory triggers one scan of that
+project's last 30 days of session history, producing that project's entry.
+
+**What it counts**
+
+- The data is DSH's own persisted session logs
+  (`~/.dsh/sessions/<project-dir>/`). Every `tool/call` event records one
+  invocation.
+- **A `defer_execute_tool` call counts toward the tool it activates** — a model
+  repeatedly reaching for a deferred tool is exactly the signal that it should
+  not have been deferred, so that tool promotes itself to always-active.
+- Tools are ranked by in-window call count (ties broken by name), the top
+  `autoTuneTopN` become `noDefer`, and `defer: ['Defer(*)']` defers the rest.
+
+**Three safety rails**
+
+- **Refreshed at most once a day.** Each entry records `tunedAt`, the time of its
+  last refresh. Starting again on the same **local calendar day** reuses the
+  entry as-is and **skips the scan entirely** — no history read, no write. A
+  refresh happens only after the local midnight passes, not after 24 hours
+  elapse.
+- **A small sample never rewrites anything.** Below `autoTuneMinSamples`
+  (200 by default) in-window calls the plugin only logs its finding and leaves
+  the project on the global configuration, so noise cannot overwrite your rules.
+- **Only its own file is written** — `~/.dsh/lazy-tools/projects.json`, never the
+  profile configuration.
+
+The rule is a calendar day rather than a rolling 24 hours because the ranking
+window itself is day-granular: refreshing at 23:00 yesterday and starting again
+at 08:00 today is only nine hours, but the data window has already advanced by a
+day, so re-scanning is meaningful. Comparison uses local date components rather
+than a timestamp difference, so it stays correct on DST transition days (where a
+local day is 23 or 25 hours long).
+
+When a scan finds the ranking unchanged, only the `tunedAt` stamp is advanced
+and `defer`/`noDefer` are left as they were — which also throttles the rest of
+that day.
+
+The store is read **synchronously** at plugin install, so a session's very first
+request already honors an existing override. When a scan completes for a project
+in this process, that project's agents are re-ranked immediately, with no
+restart. Each project is tuned at most once per process (memoized, including
+concurrent de-duplication); writes are atomic replacements and two projects
+tuning at once cannot lose each other's entries. Any failure is contained in the
+background task, so session startup is never affected.
+
+```yaml
+# Adjust the tuning parameters
+config:
+  autoTuneTopN: 12          # keep only the 12 most-used tools active
+  autoTuneWindowDays: 60    # rank over 60 days of history
+  autoTuneMinSamples: 50    # let small projects tune too
+```
+
+```yaml
+# Turn auto-tuning off entirely and use only your global configuration
+config:
+  autoTune: false
+```
+
+```yaml
+# Typical setup: one conservative global rule, refined per project by the scan
+config:
+  defer: ['Defer(*)']
+  noDefer: ['bash', 'read', 'edit', 'write']
+```
 
 ### Examples
 

@@ -41,6 +41,24 @@
  *
  * Naming either `defer` or `noDefer` replaces the preset entirely, so
  * `defer: []` keeps its meaning of "defer nothing".
+ *
+ * **Auto-tuning** (on by default) additionally derives a **per-project**
+ * configuration from that project's own session history: the first session that
+ * reports a working directory triggers one scan of the last 30 days of that
+ * project's `tool/call` events, and the top 20 tools by use become the active
+ * set while everything else is deferred. `defer_execute_tool` arguments count as
+ * usage of the tool they activate, so a repeatedly-activated tool promotes
+ * itself out of the deferred set. A project with fewer than 200 in-window calls
+ * is left untouched rather than tuned on noise, and a ranking that already
+ * matches the stored override is not rewritten. Set `autoTune: false` to opt
+ * out.
+ *
+ * Configuration resolves in two layers: **project override > global config**.
+ * The `defer`/`noDefer` you write here is the global rule, honored by every
+ * project; a project that auto-tuning has measured gets its own override in
+ * `~/.dsh/lazy-tools/projects.json`, which replaces the pattern pair for that
+ * project only. Hand-written global rules are therefore never clobbered by a
+ * scan of some other repository.
  * @module @deepseek-ai/dsh-lazy-tools
  */
 
@@ -51,6 +69,9 @@ import type { AssembleContext, PromptAssembly } from '@deepseek-ai/dsh-system-pr
 import z from '@deepseek-ai/schemastery'
 import { applyDefaultPreset, resolveDeferConfig, type LazyToolsConfig } from './config.ts'
 import { buildTools, type LoadStatus, type ToolsAccess } from './tools.ts'
+import { autoTune, describeOutcome, resolveAutoTuneOptions, type AutoTuneOptions } from './autotune.ts'
+import { applyProjectOverride, readProjectOverride, readStoreSync } from './project-config.ts'
+import { DEFAULT_MIN_SAMPLES, DEFAULT_TOP_N, DEFAULT_WINDOW_DAYS } from './history.ts'
 
 /** Cordis plugin name. */
 export const name = 'lazy-tools'
@@ -69,6 +90,14 @@ export interface Config {
   noDefer?: string[]
   /** Global switch; false disables all deferring. Default true. */
   deferToolLoading?: boolean
+  /** Tune `defer`/`noDefer` from this project's session history. Default true. */
+  autoTune?: boolean
+  /** Days of history the auto-tune ranking covers. Default 30. */
+  autoTuneWindowDays?: number
+  /** How many top-ranked tools auto-tune keeps active. Default 20. */
+  autoTuneTopN?: number
+  /** In-window calls a project needs before auto-tune rewrites anything. Default 200. */
+  autoTuneMinSamples?: number
 }
 
 /** Schemastery validation and defaults for {@link Config}. */
@@ -80,6 +109,10 @@ export const Config: z<Config> = z.object({
   defer: z.array(z.string()).default(undefined as unknown as string[]),
   noDefer: z.array(z.string()).default(undefined as unknown as string[]),
   deferToolLoading: z.boolean().default(true),
+  autoTune: z.boolean().default(true),
+  autoTuneWindowDays: z.number().default(DEFAULT_WINDOW_DAYS),
+  autoTuneTopN: z.number().default(DEFAULT_TOP_N),
+  autoTuneMinSamples: z.number().default(DEFAULT_MIN_SAMPLES),
 })
 
 /** Render one thrown value for a log line. */
@@ -106,18 +139,114 @@ interface AgentState {
  * @param config - deferred-tool visibility patterns.
  */
 export function apply(ctx: Context, config: Config): void {
-  const resolved: LazyToolsConfig = applyDefaultPreset(config)
+  /** The operator's global configuration; the base for every project. */
+  const globalConfig: LazyToolsConfig = applyDefaultPreset(config)
   const states = new Map<Agent, AgentState>()
+  const home = ctx.get('profileContext')?.home
+  const autoTuneOptions: AutoTuneOptions = resolveAutoTuneOptions(config, home)
+
+  /**
+   * Per-project configuration in force for this process, keyed by the session's
+   * absolute working directory. An entry is present only for a project that has
+   * an override on disk; every other project resolves to the global config.
+   *
+   * The store is read once at install so the first request of a session already
+   * honors an existing override. A project tuned later in this same process is
+   * refreshed after its write lands, so the new patterns take effect from the
+   * next request rather than needing a restart.
+   */
+  const projectConfigs = new Map<string, LazyToolsConfig>()
+
+  /** Resolve the configuration that applies to one agent's project. */
+  function configFor(agent: Agent): LazyToolsConfig {
+    const cwd = agent.session?.header.cwd
+    if (cwd === undefined) return globalConfig
+    return projectConfigs.get(cwd) ?? globalConfig
+  }
+
+  /**
+   * Load every project override before the first session can be created. This
+   * runs synchronously at install so an existing override is already in force
+   * for a session's very first request — a partial read on the request path
+   * would silently fall back to the global configuration instead.
+   *
+   * A missing or unreadable store is not an error: it just means every project
+   * uses the global configuration.
+   */
+  try {
+    const store = readStoreSync(home)
+    for (const [cwd, override] of Object.entries(store.projects)) {
+      projectConfigs.set(cwd, applyProjectOverride(globalConfig, override))
+    }
+  } catch (error: unknown) {
+    ctx.logger.warn(`lazy-tools: could not read project overrides (${errorMessage(error)}); using the global configuration`)
+  }
+
+  /**
+   * Projects already tuned by this process. Auto-tuning runs at most once per
+   * project: the first session that reports a working directory supplies the
+   * project, and later sessions — including a `cwd` change — are not re-mined.
+   * The promise is memoized before it settles so concurrent first sessions
+   * cannot both start a scan.
+   */
+  const tunedProjects = new Map<string, Promise<void>>()
+
+  /**
+   * Mine one project's history and persist the resulting per-project override.
+   *
+   * Auto-tuning is a background optimization on the startup path, so every
+   * failure is contained: it is logged and the project keeps using the global
+   * configuration.
+   * @param cwd - the project working directory reported by a session.
+   */
+  function tuneProject(cwd: string): void {
+    const existing = tunedProjects.get(cwd)
+    if (existing !== undefined) return
+    const run = (async (): Promise<void> => {
+      try {
+        const outcome = await autoTune(ctx, cwd, autoTuneOptions)
+        ctx.logger.info(describeOutcome(outcome, autoTuneOptions.topN))
+        if (outcome.kind !== 'applied') return
+        // Re-read so the override this scan just wrote takes effect without a
+        // restart, and re-rank every agent already sitting in this project.
+        const override = await readProjectOverride(cwd, home)
+        if (override === undefined) return
+        projectConfigs.set(cwd, applyProjectOverride(globalConfig, override))
+        for (const state of states.values()) {
+          if (state.agent.session?.header.cwd !== cwd) continue
+          try {
+            rankFromRegistry(state)
+          } catch (error: unknown) {
+            ctx.logger.warn(`lazy-tools: re-rank after auto-tune failed (${errorMessage(error)}); keeping the previous catalog`)
+          }
+        }
+      } catch (error: unknown) {
+        ctx.logger.warn(`lazy-tools: auto-tune failed (${errorMessage(error)}); keeping the current configuration`)
+      }
+    })()
+    tunedProjects.set(cwd, run)
+  }
+
+  /** Start auto-tuning for one agent's project, once per project. */
+  function tuneForAgent(agent: Agent): void {
+    if (!autoTuneOptions.enabled) return
+    const cwd = agent.session?.header.cwd
+    if (cwd !== undefined) tuneProject(cwd)
+  }
 
   /**
    * Re-rank one agent against a freshly assembled tool list. The catalog
    * becomes exactly what the registry offers this scope — whatever plane
-   * registered it — and the defer patterns are re-applied over its names with
-   * the guards and this agent's prior activations excluded.
+   * registered it — and the defer patterns in force for THIS agent's project
+   * are re-applied over its names with the guards and this agent's prior
+   * activations excluded.
    */
   function rank(state: AgentState, schemas: readonly ToolSchema[]): void {
     state.catalog = [...schemas]
-    const { deferNames } = resolveDeferConfig(state.catalog.map((schema) => schema.name), resolved)
+    const { deferNames } = resolveDeferConfig(
+      state.catalog.map((schema) => schema.name),
+      configFor(state.agent),
+    )
     state.deferredNames = new Set([...deferNames].filter((name) => !state.activated.has(name)))
   }
 
@@ -223,7 +352,10 @@ export function apply(ctx: Context, config: Config): void {
       return assembly
     }
   })
-  ctx.on('agent/created', ({ agent }) => { install(agent) })
+  ctx.on('agent/created', ({ agent }) => {
+    install(agent)
+    tuneForAgent(agent)
+  })
   ctx.on('agent/disposed', ({ agent }) => { uninstall(agent) })
   // Keep the guard and the search catalog current between assemblies — a tool
   // mounted by a preset or an MCP server does not wait for the next request.
@@ -237,7 +369,10 @@ export function apply(ctx: Context, config: Config): void {
       }
     }
   })
-  for (const agent of ctx.agents.list()) install(agent)
+  for (const agent of ctx.agents.list()) {
+    install(agent)
+    tuneForAgent(agent)
+  }
   ctx.effect(() => () => {
     for (const agent of states.keys()) uninstall(agent)
   }, 'lazy-tools: per-agent registrations')

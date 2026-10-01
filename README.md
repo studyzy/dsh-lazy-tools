@@ -64,6 +64,12 @@ Anthropic `tool_reference` 或 OpenAI 的 deferred-tool input items）。
   通配符与全局 `deferToolLoading` 开关。
 - 🛡️ **自保守卫** — `tool_search` 与 `defer_execute_tool` 注册在 agent 自身作用域，
   永不被延迟；保留传输 `run_code` 同样被钉住，`Defer(*)` 无法把系统锁死。
+- 📊 **按项目自动调优** — 启动后第一个汇报工作目录的会话会扫描该项目最近
+  30 天的会话历史，统计 `tool/call` 频率，把最常用的 20 个工具设为常驻、其余
+  全部延迟。
+- 🗂️ **全局 + 项目级两层配置** — 你手写的全局 `defer`/`noDefer` 对所有项目
+  生效；自动调优的结果只写进独立的项目级存储，按项目覆盖全局。优先级
+  **项目级 > 全局**。全局配置永远不会被扫描结果改写。
 
 ## 安装
 
@@ -125,9 +131,110 @@ dsh plugin --profile <profile> add link:/path/to/dsh-lazy-tools
 | `defer` | `string[]` | 见"默认行为" | 要延迟的工具名或 `Defer(pattern)` 条目。裸名等价于 `Defer(name)`。`*` 是唯一通配符——`Defer(*)` 延迟除守卫工具外的所有工具。 |
 | `noDefer` | `string[]` | 见"默认行为" | 必须保持可直接调用的工具名或 `NoDefer(pattern)` 条目。裸名等价于 `NoDefer(name)`。**始终优先于 `defer`。** |
 | `deferToolLoading` | `boolean` | `true` | 全局开关。为 `false` 时不延迟任何工具。 |
+| `autoTune` | `boolean` | `true` | 是否按本项目会话历史自动生成 `defer`/`noDefer`，见"按项目自动调优"。 |
+| `autoTuneWindowDays` | `number` | `30` | 统计窗口天数。 |
+| `autoTuneTopN` | `number` | `20` | 自动调优保留多少个最常用工具常驻。 |
+| `autoTuneMinSamples` | `number` | `200` | 窗口内调用总数达到该值才允许改写配置。 |
 
 修饰符大小写不敏感（`defer(bash)` ≡ `Defer(bash)`）。优先级（从高到低）：
 `noDefer` > `defer` > `deferToolLoading`。
+
+## 配置分层：全局 Defer + 项目级 Defer
+
+配置分两层，优先级 **项目级 > 全局**：
+
+| 层 | 写在哪 | 谁写 | 作用范围 |
+|---|---|---|---|
+| **全局** | profile 的 `cordis.patch.yml` 里 `config.defer` / `config.noDefer` | 你手写 | 所有项目 |
+| **项目级** | `~/.dsh/lazy-tools/projects.json` | 自动扫描生成 | 仅该项目 |
+
+自动生成的条目里还记录了 `tunedAt`（上次刷新时间）、`sampleCalls`（参与统计的
+调用数）和 `sessions`（会话数），方便你判断这条配置的新鲜度和可信度。
+
+解析规则：某项目在项目级存储里有条目就用它；没有就回退到全局配置。
+**自动调优只写项目级存储，绝不改动你的全局配置**——所以你在多仓库间切换时，
+手写的全局规则不会被某个项目的扫描结果覆盖。
+
+`projects.json` 的样子（键是项目的绝对路径）：
+
+```json
+{
+  "version": 1,
+  "projects": {
+    "/Users/me/Code/api": {
+      "defer": ["Defer(*)"],
+      "noDefer": ["bash", "edit", "read"],
+      "tunedAt": 1790000000000,
+      "sampleCalls": 412,
+      "sessions": 6
+    }
+  }
+}
+```
+
+项目级条目是**整体替换**而非合并 `defer`/`noDefer`：否则全局的 `Defer(git_*)`
+会继续在该项目生效，导致工具被两条规则同时延迟、无法按项目重新启用。全局中
+与模式无关的开关（`deferToolLoading`、`autoTune*`）仍然沿用。
+
+> 想清掉某个项目的自动调优？删掉 `projects.json` 里对应条目（或整个文件）即可，
+> 该项目立即回退到全局配置。
+
+## 按项目自动调优
+
+启用后（默认开启），插件会**按项目**统计真实使用情况并生成项目级配置：启动后
+第一个汇报工作目录的会话，触发一次对该项目最近 30 天会话历史的扫描。
+
+**统计口径**
+
+- 数据来自 DSH 落盘的会话日志（`~/.dsh/sessions/<项目目录>/`）。每个
+  `tool/call` 事件记录一次工具调用。
+- **`defer_execute_tool` 的一次调用，计入它激活的那个工具**——模型反复主动
+  激活某个被延迟的工具，正是"它不该被延迟"的信号，因此会自动升为常驻。
+- 按窗口内调用次数降序排序（次数相同按名称升序），取前 `autoTuneTopN` 个
+  写入 `noDefer`，并设置 `defer: ['Defer(*)']` 延迟其余全部。
+
+**三条安全边界**
+
+- **一天只刷新一次**：条目里记录 `tunedAt`（上次刷新时间）。同一**本地自然日**
+  内再次启动，直接沿用已有条目并**完全跳过扫描**，不读历史、不写盘。跨过本地
+  零点（而非「满 24 小时」）后才会重新扫描。
+- **样本不足不改写**：窗口内调用总数低于 `autoTuneMinSamples`（默认 200）时
+  只记日志、保持现状（该项目继续用全局配置），避免用噪音覆盖你的配置。
+- **只写自己的文件**：只动 `~/.dsh/lazy-tools/projects.json`，不碰 profile 配置。
+
+按自然日而不是「满 24 小时」判定，是因为统计窗口本身以天为单位：昨天 23:00 调
+过一次、今天 08:00 又启动，虽然只隔 9 小时，但数据窗口已经前移了一天，重新扫
+描是有意义的。判定用本地日期分量比较（而非时间戳相减），因此在夏令时切换当天
+（本地一天可能是 23 或 25 小时）依然正确。
+
+若某天扫描后发现排序没变，条目只更新 `tunedAt` 时间戳，`defer`/`noDefer` 保持
+不变——这样当天剩余时间同样被节流。
+
+存储在插件安装时**同步读入内存**，因此会话的第一个请求就已经生效；同进程内某
+项目扫描完成并写入后，会立即重新计算该项目 agent 的工具可见性，无需重启。单个
+项目只调优一次（按进程内存记忆，含并发去重）；写入是原子替换，且多个项目并发
+调优不会互相丢失条目。任何失败都被限制在后台任务内，不影响会话启动。
+
+```yaml
+# 调整调优参数
+config:
+  autoTuneTopN: 12          # 只常驻最常用的 12 个
+  autoTuneWindowDays: 60    # 用 60 天历史
+  autoTuneMinSamples: 50    # 小项目也允许调优
+```
+
+```yaml
+# 完全关闭自动调优，只用你写的全局配置
+config:
+  autoTune: false
+```
+
+```yaml
+# 典型用法：全局给一套保守规则，让自动调优在各项目里细化
+config:
+  defer: ['Defer(*)']
+  noDefer: ['bash', 'read', 'edit', 'write']
+```
 
 ### 示例
 

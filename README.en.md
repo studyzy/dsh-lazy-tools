@@ -71,7 +71,7 @@ or OpenAI's deferred-tool input items.
   coexists with every other `restrict`, every tool source, and every plane, and
   never widens another policy.
 - 🎛️ **Flexible configuration** — CodeBuddy-style `Defer(...)` / `NoDefer(...)`
-  patterns with `*` wildcards and a global `deferToolLoading` switch.
+  patterns with `*` wildcards.
 - 🛡️ **Self-safe guards** — `tool_search` and `defer_execute_tool` are
   registered on the agent's own scope and never deferred, and the reserved
   `run_code` transport is pinned the same way, so `Defer(*)` cannot lock the
@@ -146,21 +146,61 @@ CodeBuddy-style syntax:
   config:
     defer: ['glob', 'web_search', 'Defer(fetch_*)']
     noDefer: ['bash']
-    deferToolLoading: true
 ```
 
 | Key | Type | Default | Description |
 |---|---|---|---|
 | `defer` | `string[]` | see Defaults | Tool names or `Defer(pattern)` entries to defer. Bare names are equivalent to `Defer(name)`. `*` is the only wildcard — `Defer(*)` defers everything except the guard tools. |
 | `noDefer` | `string[]` | see Defaults | Tool names or `NoDefer(pattern)` entries that must stay directly callable. Bare names are equivalent to `NoDefer(name)`. **Always wins over `defer`.** |
-| `deferToolLoading` | `boolean` | `true` | Global switch. When `false`, nothing is deferred. |
 | `autoTune` | `boolean` | `true` | Whether to derive `defer`/`noDefer` from this project's session history; see Per-project auto-tuning. |
 | `autoTuneWindowDays` | `number` | `30` | Length of the history window in days. |
 | `autoTuneTopN` | `number` | `20` | How many of the most-used tools stay active. |
 | `autoTuneMinSamples` | `number` | `200` | In-window calls required before the configuration may be rewritten. |
 
 Modifiers are case-insensitive (`defer(bash)` ≡ `Defer(bash)`). Precedence
-(highest first): `noDefer` > `defer` > `deferToolLoading`.
+(highest first): `noDefer` > `defer`.
+
+> **Want to switch deferring off entirely?** Write `defer: []`. No separate switch
+> is needed — an empty list already says "defer nothing", and a second boolean
+> could only ever contradict it.
+
+### Configuring it in the UI
+
+Web and Desktop also ship a visual page, so none of this needs hand-written YAML:
+open **Settings → Built-in plugins** and switch to the **Lazy tools** tab. It sits
+beside the other feature-owned configuration tabs (the read-only inventory, the
+suggested-prompt route card).
+
+Its six fields map one-to-one onto the table above. `defer` and `noDefer` are
+**comma-separated** boxes (for example `Defer(*), web_fetch, glob`); newlines work
+too, and the two may be mixed. Leaving one empty clears the key and restores the
+value the composition layer supplies, rather than writing an empty array.
+`autoTune` is a switch; the remaining three are number inputs. Nothing is written
+until you press **Save**; leaving the page drops the draft.
+
+While the pattern pair is unconfigured, the `defer` and `noDefer` boxes show the
+**shipped preset that is actually in force** (`Defer(*)` plus the callable core)
+instead of sitting empty. They are not marked as overridden, since a preset is not
+something you chose — so what you read is what the plugin enforces.
+
+> **Want to switch deferring off entirely?** Clear the `defer` box and save (the
+> same thing as `defer: []`).
+
+> Why commas rather than one-entry-per-line: DSH's shared `SettingsValueField`
+> renders a single-line `<input type="text">`, and the browser strips newlines from
+> a rendered value. With newline separation, `bash, read` displayed as `bashread`
+> and was written back as **one** tool name, corrupting the list.
+
+A save writes the plugin's `config` in the profile patch — the **global** layer.
+Per-project overrides stay under the tuner's control in
+`~/.dsh/lazy-tools/projects.json` and are never rewritten from the UI. The change
+takes effect **immediately**, with no restart: the plugin re-resolves its patterns
+from the live configuration on every request, and a save triggers a re-rank so the
+very next request uses the new rules.
+
+> The page comes from the plugin's own browser half (`dsh.client` declaration plus
+> `lib/client.js`) and appears only while the Host has the plugin loaded. A
+> headless composition has no page and shows no tab.
 
 ## Configuration layers: global + per-project
 
@@ -201,8 +241,8 @@ What `projects.json` looks like (keys are absolute project paths):
 A project entry **replaces** the `defer`/`noDefer` pair rather than merging it:
 otherwise a global `Defer(git_*)` would keep applying inside that project and a
 tool would be deferred by both rules with no way to re-enable it per project.
-Global knobs unrelated to the pattern pair (`deferToolLoading`, the `autoTune*`
-settings) are still inherited.
+Global knobs unrelated to the pattern pair (the `autoTune*` settings) are still
+inherited.
 
 > To clear one project's auto-tuning, delete its entry from `projects.json` (or
 > the whole file). That project immediately falls back to the global config.
@@ -391,8 +431,22 @@ pnpm run typecheck:tests  # TypeScript type check (tests)
 pnpm test                 # vitest unit + integration tests
 pnpm run lint             # oxlint
 pnpm run build            # tsc + tsdown bundle into lib/
-pnpm run check            # lint + both typechecks + tests + build
+pnpm run verify:client    # check the built browser bundle against the kernel contract
+pnpm run check            # everything above, in order
 ```
+
+`verify:client` deserves a word. Whether the settings page appears depends on
+three rules the **browser kernel** enforces and the build does not: register a
+factory under the package name, require only modules the shell already provides,
+and export `apply`/`inject`. A packaging mistake therefore shows up as a blank
+page for the user while `pnpm run check` stays green. The script executes the real
+built artifact through a stand-in module loader and turns that class of bug into a
+reproducible failure.
+
+> After changing the browser half, an **already-running DSH window will not show
+> the new page**: the client plugin graph is composed at startup, and package
+> metadata caches the negative "not a client package" verdict until restart.
+> Restart DSH (see "Configuring it in the UI").
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the contribution flow, the source
 layout, and how to try a change inside a real harness; [CHANGELOG.md](CHANGELOG.md)

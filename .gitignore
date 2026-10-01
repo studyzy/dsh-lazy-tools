@@ -1,3 +1,9 @@
 node_modules/
 lib/
 *.log
+
+# pnpm's content-addressable store, when a build run creates one locally
+.pnpm-store/
+
+# Throwaway DSH home used for local GUI verification
+.dsh-verify/

@@ -63,7 +63,7 @@ Anthropic `tool_reference` 或 OpenAI 的 deferred-tool input items）。
   工具列表做减法，因此与任何其他 `restrict`、任何工具来源、任何平面天然共存，
   绝不放宽其他策略。
 - 🎛️ **灵活配置** — CodeBuddy 风格 `Defer(...)` / `NoDefer(...)` 模式，支持 `*`
-  通配符与全局 `deferToolLoading` 开关。
+  通配符。
 - 🛡️ **自保守卫** — `tool_search` 与 `defer_execute_tool` 注册在 agent 自身作用域，
   永不被延迟；保留传输 `run_code` 同样被钉住，`Defer(*)` 无法把系统锁死。
 - 📊 **按项目自动调优** — 启动后第一个汇报工作目录的会话会扫描该项目最近
@@ -130,21 +130,51 @@ dsh plugin --profile <profile> add link:/path/to/dsh-lazy-tools
   config:
     defer: ['glob', 'web_search', 'Defer(fetch_*)']
     noDefer: ['bash']
-    deferToolLoading: true
 ```
 
 | 键 | 类型 | 默认 | 说明 |
 |---|---|---|---|
 | `defer` | `string[]` | 见"默认行为" | 要延迟的工具名或 `Defer(pattern)` 条目。裸名等价于 `Defer(name)`。`*` 是唯一通配符——`Defer(*)` 延迟除守卫工具外的所有工具。 |
 | `noDefer` | `string[]` | 见"默认行为" | 必须保持可直接调用的工具名或 `NoDefer(pattern)` 条目。裸名等价于 `NoDefer(name)`。**始终优先于 `defer`。** |
-| `deferToolLoading` | `boolean` | `true` | 全局开关。为 `false` 时不延迟任何工具。 |
 | `autoTune` | `boolean` | `true` | 是否按本项目会话历史自动生成 `defer`/`noDefer`，见"按项目自动调优"。 |
 | `autoTuneWindowDays` | `number` | `30` | 统计窗口天数。 |
 | `autoTuneTopN` | `number` | `20` | 自动调优保留多少个最常用工具常驻。 |
 | `autoTuneMinSamples` | `number` | `200` | 窗口内调用总数达到该值才允许改写配置。 |
 
 修饰符大小写不敏感（`defer(bash)` ≡ `Defer(bash)`）。优先级（从高到低）：
-`noDefer` > `defer` > `deferToolLoading`。
+`noDefer` > `defer`。
+
+> **想彻底关掉延迟加载？** 写 `defer: []` 就行，不需要额外的开关——空列表本身
+> 就表示"不延迟任何工具"，再挂一个布尔开关只会和它互相矛盾。
+
+### 在界面里配置
+
+Web / 桌面版还有一块可视化配置页，不用手写 YAML：打开 **设置（Settings）→ 内置插件
+（Built-in plugins）**，切到 **懒加载工具（Lazy tools）** 标签页即可。它与其它功能自带
+的配置标签页（只读清单、建议提示词等）并列在同一处。
+
+页面上六个字段与上表一一对应：`defer` 和 `noDefer` 是**逗号分隔**的输入框（例如
+`Defer(*), web_fetch, glob`；也接受换行分隔，两者可混用。留空＝清除该键、回退到
+组合层提供的值，而不是写入空数组）；`autoTune` 是开关；其余三个是数字输入。
+改动**点保存才生效**，离开页面即丢弃草稿。
+
+未配置时，`defer` / `noDefer` 两个框会直接显示**当前实际生效的内置预设**
+（`Defer(*)` 与那一串常驻工具），而不是空框——它们不算"已覆盖"，因此不带覆盖标记。
+这样你看到的就等于插件真正在执行的值。
+
+> **想彻底关掉延迟加载？** 把 `defer` 框清空保存即可（等价于 `defer: []`）。
+
+> 为什么用逗号而不是"一行一个"：DSH 共用的 `SettingsValueField` 渲染的是单行
+> `<input type="text">`，浏览器会把渲染值里的换行去掉。若用换行分隔，`bash, read`
+> 会显示成 `bashread`，保存时被当成**一个**工具名写回去，直接破坏列表。
+
+保存写进的是该插件在 profile patch 里的 `config`，也就是**全局层**；项目级覆盖仍由
+自动调优写入 `~/.dsh/lazy-tools/projects.json`，界面上不会被改写。保存后配置**当场
+生效**，不需要重启：插件每次都从实时配置重新解析延迟规则，保存会触发一次重新排名，
+下一次请求就用新规则。
+
+> 页面由插件自带的浏览器端一半提供（`dsh.client` 声明 + `lib/client.js`），只在 Host
+> 真正加载了本插件时才出现；纯 headless 组合里不会有这个页面，界面也不会显示该标签页。
 
 ## 配置分层：全局 Defer + 项目级 Defer
 
@@ -181,7 +211,7 @@ dsh plugin --profile <profile> add link:/path/to/dsh-lazy-tools
 
 项目级条目是**整体替换**而非合并 `defer`/`noDefer`：否则全局的 `Defer(git_*)`
 会继续在该项目生效，导致工具被两条规则同时延迟、无法按项目重新启用。全局中
-与模式无关的开关（`deferToolLoading`、`autoTune*`）仍然沿用。
+与模式无关的开关（`autoTune*`）仍然沿用。
 
 > 想清掉某个项目的自动调优？删掉 `projects.json` 里对应条目（或整个文件）即可，
 > 该项目立即回退到全局配置。
@@ -347,8 +377,19 @@ pnpm run typecheck:tests  # TypeScript 类型检查（tests）
 pnpm test                 # vitest 单元 + 集成测试
 pnpm run lint             # oxlint
 pnpm run build            # tsc + tsdown 打包到 lib/
-pnpm run check            # lint + 两次类型检查 + 测试 + 构建
+pnpm run verify:client    # 校验构建出的浏览器端 bundle 是否符合内核契约
+pnpm run check            # 以上全部串起来跑一遍
 ```
+
+`verify:client` 值得单独说明：界面能否出现，取决于 `lib/client.js` 是否满足
+**浏览器内核**的三条约定——用包名注册 factory、只 require 内核已提供的模块、导出
+`apply`/`inject`。这些约定只在浏览器里强制，构建阶段不报错，所以一个打包失误的
+表现是"用户打开界面白屏"，而 `pnpm run check` 全绿。该脚本把真实构建产物放进一个
+替身模块加载器里执行，把这类问题变成一次可复现的失败。
+
+> 改完浏览器端后，**已在运行的 DSH 窗口不会自动出现新页面**：客户端插件图在启动时
+> 合成，且包元数据会缓存"该包不是客户端插件"这一否定结论直到重启。重启 DSH 即可
+> （见"在界面里配置"）。
 
 贡献流程、目录结构、以及在真实 Harness 里试插件的步骤见
 [CONTRIBUTING.md](CONTRIBUTING.md)；版本变更记录见 [CHANGELOG.md](CHANGELOG.md)；

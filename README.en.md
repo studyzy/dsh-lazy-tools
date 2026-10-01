@@ -29,7 +29,10 @@ when the model asks for them.
 **Works out of the box, zero configuration**: the long tail is deferred while a
 coding core stays available (`read`, `write`, `edit`, `bash`, `glob`, `grep`,
 `web_search`, `web_fetch`, `ask_user_question`, `skill` — see
-[Defaults](#defaults)).
+[Defaults](#defaults)). That core is a starting point: with auto-tuning on, the
+plugin measures real usage per project and keeps each project's most-used tools
+active while deferring the rest, so every project converges on the set that fits
+it.
 
 Deferred tools are removed from the **tool list the model sees**, so their
 schemas (and names) never reach the model context. The model discovers them on
@@ -121,6 +124,12 @@ built-in preset, which is what you get right after installing it.
 | Deferred | `Defer(*)` — everything but the guards, discovered on demand via `tool_search` |
 | Always available | `read`, `write`, `edit`, `bash`, `glob`, `grep`, `web_search`, `web_fetch`, `ask_user_question`, `skill` |
 | Guards (never deferred) | `tool_search`, `defer_execute_tool`, `run_code` |
+
+> That table is the **global default** — where every project starts before it has
+> been auto-tuned. With auto-tuning on (the default), a project that accumulates
+> enough history is overridden by its own measured ranking; see Configuration
+> layers and Per-project auto-tuning below. Set `autoTune: false` to keep every
+> project on this preset.
 
 **Naming either `defer` or `noDefer` replaces the preset entirely**, so
 everything follows what you wrote: `defer: []` still means "defer nothing", and
@@ -317,6 +326,8 @@ config:
 | Hiding | On `system-prompt/assemble`, deferred tools are filtered out of that scope's model-facing tool list (the registry itself is untouched). |
 | Interception | A `tools/pre-execute` listener returns `deny` when the model calls a not-yet-loaded deferred tool directly, pointing back to `tool_search` / `defer_execute_tool`. |
 | Activation | Matched tools are recorded in the agent's activation set and appear in the tool list — directly callable — from the next model request. |
+| Resolving the effective config | Looks up the agent's `cwd`: a project entry in the store wins, otherwise the global configuration applies. Loaded synchronously at install, so the first request already honors it. |
+| Auto-tuning | On session start (at most once per project per day) scans that project's history in the background, writes the top-ranked tools to the per-project store, and immediately re-ranks that project's agents. |
 
 ### Flow
 
@@ -359,6 +370,17 @@ next turn: model calls todo_write directly (full schema now in the tools list)
 - **Tools in the agent's own scope are never taken over.** Tools registered in
   that agent's own scope (`tool_search` / `defer_execute_tool` themselves) stay
   visible; `Defer(*)` does not apply to them.
+- **Auto-tuning measures existing history.** It fires at session start, when the
+  new session has made no tool calls yet, so it ranks the project's *prior*
+  record. A freshly adopted project keeps the global configuration until it
+  accumulates `autoTuneMinSamples` calls.
+- **Project entries are keyed by absolute path.** Moving or renaming a project
+  directory leaves its old entry unmatched (the project falls back to the global
+  configuration and starts measuring again). Migrate or delete the key in
+  `~/.dsh/lazy-tools/projects.json` if you want to carry the tuning across.
+- **Auto-tuning touches nothing but its own store.** It writes one plugin-owned
+  file, registers no session events, and never edits DSH's configuration
+  documents, so it cannot conflict with other plugins or version validation.
 
 ## Development
 

@@ -1,20 +1,25 @@
 /**
  * CodeBuddy-style defer semantics for DeepSeek Harness, adapted from pi-lazy-tools.
  *
- * The plugin reads its `defer` / `noDefer` / `deferToolLoading` from the cordis
- * plugin config (see `Config` in ./index.ts), which schemastery validates. This
- * module compiles those entries into concrete deferred/active name sets given
- * the current set of registered global tool names.
+ * The plugin reads its `defer` / `noDefer` from the cordis plugin config (see
+ * `Config` in ./index.ts), which schemastery validates. This module compiles
+ * those entries into concrete deferred/active name sets given the current set of
+ * registered global tool names.
  *
- * Semantics (highest precedence first): `noDefer` > `defer` > `deferToolLoading`.
- * `*` is the only wildcard and matches any character sequence; `Defer(*)`
- * defers everything except the guards. A config that names neither `defer` nor
- * `noDefer` gets the shipped preset (defer everything, keep
- * {@link DEFAULT_ACTIVE_TOOLS} callable) via {@link applyDefaultPreset}.
+ * Semantics (highest precedence first): `noDefer` > `defer`. `*` is the only
+ * wildcard and matches any character sequence; `Defer(*)` defers everything
+ * except the guards. A config that names neither `defer` nor `noDefer` gets the
+ * shipped preset (defer everything, keep {@link DEFAULT_ACTIVE_TOOLS} callable)
+ * via {@link applyDefaultPreset}.
+ *
+ * There is deliberately no separate "enable deferring" switch: an empty `defer`
+ * list already expresses "defer nothing" exactly, so a second boolean could only
+ * disagree with it. "Turn the feature off" is written `defer: []`.
  * @module @deepseek-ai/dsh-lazy-tools/config
  */
 
 import { RUN_CODE_NAME } from '@deepseek-ai/dsh-tools'
+import { DEFAULT_ACTIVE_TOOLS, DEFER_ALL_ENTRY, resolveDeferPatterns } from './preset.ts'
 
 /**
  * Tools that must never be deferred: the search/execute pair would self-lock,
@@ -29,33 +34,12 @@ export interface LazyToolsConfig {
   readonly defer?: readonly string[]
   /** Tool names / `NoDefer(pattern)` entries that must stay active. */
   readonly noDefer?: readonly string[]
-  /** Global switch; false disables all deferring. Default true. */
-  readonly deferToolLoading?: boolean
 }
 
-/**
- * The defer entry a fresh install uses: defer everything the guards do not
- * protect.
- */
-export const DEFER_ALL_ENTRY = 'Defer(*)'
-
-/**
- * Tools a fresh install keeps directly callable. Everything else is deferred, so
- * the model starts with a working coding core and loads the long tail on demand
- * through `tool_search` — no configuration required.
- */
-export const DEFAULT_ACTIVE_TOOLS = [
-  'read',
-  'write',
-  'edit',
-  'bash',
-  'glob',
-  'grep',
-  'web_search',
-  'web_fetch',
-  'ask_user_question',
-  'skill',
-] as const
+// Re-exported so the Host half keeps one import site for its configuration
+// surface. The values themselves live in ./preset.ts, which the browser half can
+// load without pulling in `@deepseek-ai/dsh-tools`.
+export { DEFAULT_ACTIVE_TOOLS, DEFER_ALL_ENTRY }
 
 /**
  * Resolve the configured patterns, applying the shipped preset when the config
@@ -66,16 +50,15 @@ export const DEFAULT_ACTIVE_TOOLS = [
  * preset completely, so the established semantics hold — `defer: []` still means
  * "defer nothing", and `defer: ['glob']` still defers exactly `glob` (it is not
  * re-protected by the preset).
+ *
+ * The policy itself lives in ./preset.ts so the browser half can apply the same
+ * one without importing this module's Host-only dependencies; this wrapper keeps
+ * the Host's existing call sites and typing.
  * @param config - plugin config; an absent key stays `undefined`.
  * @returns the patterns to compile.
  */
 export function applyDefaultPreset(config: LazyToolsConfig): LazyToolsConfig {
-  const unconfigured = config.defer === undefined && config.noDefer === undefined
-  return {
-    defer: unconfigured ? [DEFER_ALL_ENTRY] : (config.defer ?? []),
-    noDefer: unconfigured ? [...DEFAULT_ACTIVE_TOOLS] : (config.noDefer ?? []),
-    deferToolLoading: config.deferToolLoading ?? true,
-  }
+  return resolveDeferPatterns(config)
 }
 
 /** Outcome of compiling one config entry. */
@@ -137,8 +120,6 @@ export interface ResolvedDeferConfig {
   readonly deferNames: ReadonlySet<string>
   /** Tool names that must stay active. */
   readonly noDeferNames: ReadonlySet<string>
-  /** Whether deferring is enabled at all. */
-  readonly enabled: boolean
 }
 
 /**
@@ -146,17 +127,12 @@ export interface ResolvedDeferConfig {
  * registered global tool names.
  * @param allToolNames - every callable tool name visible in the global registry.
  * @param config - validated plugin config.
- * @returns the resolved name sets and whether deferring is enabled.
+ * @returns the resolved name sets.
  */
 export function resolveDeferConfig(
   allToolNames: readonly string[],
   config: LazyToolsConfig,
 ): ResolvedDeferConfig {
-  const deferToolLoading = config.deferToolLoading ?? true
-  if (!deferToolLoading) {
-    return { deferNames: new Set(), noDeferNames: new Set(), enabled: false }
-  }
-
   const deferMatchers = (config.defer ?? [])
     .map((entry) => parseEntry(entry, 'defer'))
     .filter((entry): entry is ParsedEntry => entry !== null)
@@ -182,5 +158,5 @@ export function resolveDeferConfig(
     }
   }
 
-  return { deferNames, noDeferNames, enabled: true }
+  return { deferNames, noDeferNames }
 }

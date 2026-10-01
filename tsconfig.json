@@ -1,7 +1,7 @@
 {
   "compilerOptions": {
     "target": "ES2024",
-    "lib": ["ES2024"],
+    "lib": ["ES2024", "DOM", "DOM.Iterable"],
     "module": "esnext",
     "moduleResolution": "bundler",
     "rootDir": "src",
@@ -12,7 +12,10 @@
     "rewriteRelativeImportExtensions": true,
     "types": ["node"],
     "strict": true,
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "paths": {
+      "@deepseek-ai/dsh-client-ui-primitives": ["./src/client/types/dsh-client-ui-primitives/index.d.ts"]
+    }
   },
   "include": ["src"],
   "exclude": ["tests", "lib"]

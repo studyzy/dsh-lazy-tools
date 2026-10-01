@@ -207,7 +207,7 @@ export async function writeProjectOverride(
  * project tuned to `Defer(*)` plus 14 active tools must not inherit the
  * global `defer` list, or tools would be deferred by both rules with no way to
  * re-enable them per project. Global knobs that are not part of the pattern set
- * (`deferToolLoading`, auto-tune settings) are preserved.
+ * (the auto-tune settings) are preserved.
  * @param global - the operator's global configuration.
  * @param override - the project's tuned configuration, if any.
  * @returns the configuration in force for that project.

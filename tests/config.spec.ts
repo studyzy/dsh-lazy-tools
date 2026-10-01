@@ -39,9 +39,9 @@ const PRESET_CATALOG = [
   RUN_CODE_NAME,
 ]
 
-function resolve(cfg: LazyToolsConfig): { defer: string[]; noDefer: string[]; enabled: boolean } {
+function resolve(cfg: LazyToolsConfig): { defer: string[]; noDefer: string[] } {
   const r = resolveDeferConfig(ALL_TOOLS, cfg)
-  return { defer: [...r.deferNames].sort(), noDefer: [...r.noDeferNames].sort(), enabled: r.enabled }
+  return { defer: [...r.deferNames].sort(), noDefer: [...r.noDeferNames].sort() }
 }
 
 describe('parseEntry', () => {
@@ -122,10 +122,12 @@ describe('compilePattern', () => {
 })
 
 describe('resolveDeferConfig', () => {
-  it('does not defer anything by default', () => {
+  it('resolves exactly the patterns it is given, with no implicit policy', () => {
+    // `resolveDeferConfig` is the compiler, not the policy: the shipped preset
+    // is applied by `applyDefaultPreset` before this point, so an empty list
+    // here genuinely means "defer nothing".
     const r = resolve({})
     expect(r.defer).toEqual([])
-    expect(r.enabled).toBe(true)
   })
 
   it('defers a bare tool name', () => {
@@ -157,10 +159,12 @@ describe('resolveDeferConfig', () => {
     expect(r.defer).toContain('bash')
   })
 
-  it('deferToolLoading=false disables deferring', () => {
-    const r = resolve({ defer: ['Defer(*)'], deferToolLoading: false })
+  it('an empty defer list is how the mechanism is switched off', () => {
+    // There is no separate enable/disable flag: `defer: []` already says
+    // "defer nothing", so a boolean could only ever contradict the list.
+    const r = resolve({ defer: [] })
     expect(r.defer).toEqual([])
-    expect(r.enabled).toBe(false)
+    expect(r.noDefer).toEqual([])
   })
 })
 
@@ -169,7 +173,6 @@ describe('applyDefaultPreset', () => {
     const patterns = applyDefaultPreset({})
     expect(patterns.defer).toEqual([DEFER_ALL_ENTRY])
     expect(patterns.noDefer).toEqual([...DEFAULT_ACTIVE_TOOLS])
-    expect(patterns.deferToolLoading).toBe(true)
 
     // The compiled result must leave exactly the core callable and defer the
     // long tail.
@@ -187,11 +190,6 @@ describe('applyDefaultPreset', () => {
       'web_search',
       'write',
     ])
-  })
-
-  it('keeps deferToolLoading=false meaningful without other config', () => {
-    const patterns = applyDefaultPreset({ deferToolLoading: false })
-    expect(resolveDeferConfig(PRESET_CATALOG, patterns).deferNames.size).toBe(0)
   })
 
   it('lets an explicit config replace the preset entirely', () => {

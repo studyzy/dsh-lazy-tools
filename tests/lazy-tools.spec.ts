@@ -215,8 +215,10 @@ describe('deferred tool loading', () => {
     expect(ran.isError).toBe(false)
   })
 
-  it('deferToolLoading=false leaves every tool offered', async () => {
-    const { ctx } = await harness({ defer: ['Defer(*)'], deferToolLoading: false })
+  it('an empty defer config leaves every tool offered and callable', async () => {
+    // "Turn deferring off" is spelled `defer: []` — there is no separate switch,
+    // because an empty list already says exactly this.
+    const { ctx } = await harness({ defer: [] })
     ctx.tools.register(fixture('glob', 'Find files by pattern'))
     const agent = await createAgent(ctx, 'disabled')
 

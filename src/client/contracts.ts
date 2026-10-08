@@ -19,6 +19,38 @@
 export type SlotComponent<P> = (props: P) => unknown
 
 /**
+ * The view the Plugins page asks a `plugins.item` entry for.
+ *
+ * The page renders the entry twice: `summary` is the card's one-liner in the
+ * list, `page` is the body of the plugin's own page once the card is opened.
+ * The `form` prop is supplied on the page render only, and carries the
+ * Host-owned values and write action for the entry — the same namespace this
+ * page reads through `configForms`, handed over by the page owner instead.
+ */
+export interface PluginConfigViewProps {
+  /** `summary` renders the one-liner alone; `page` renders the configuration form. */
+  readonly view: 'summary' | 'page'
+  /** Host-owned configuration values and write actions; page view only. */
+  readonly form?: ConfigPageForm | undefined
+}
+
+/**
+ * Reactive values and commands the Plugins page supplies to a configuration
+ * entry's page view.
+ *
+ * This plugin does not use it: {@link ConfigForm} from `configForms.get` is the
+ * same namespace form and is what keeps the staged-edit model testable without
+ * a renderer. Declared because the page hands it to every entry and a component
+ * that ignores a prop should still say so in its contract.
+ */
+export interface ConfigPageForm {
+  /** Accepted Host values. */
+  readonly state: ConfigFormSnapshot
+  /** Submit all field edits together with the revision the editor read. */
+  readonly mutate: ConfigForm['mutate']
+}
+
+/**
  * One entry's staged-form state, as the shared `SettingsForm` renders it.
  *
  * `available` is false while the Host serves no such namespace — the form then
@@ -148,8 +180,14 @@ export interface SlotsService {
 export interface SlotRegistrationOptions {
   /** Slot name. */
   name: string
-  /** Stable entry id inside that slot. */
+  /** Stable entry id inside that slot; a list slot elects one entry per id. */
   id?: string
+  /**
+   * Cell key inside a keyed slot, which is how `plugins.bundle.config` is
+   * addressed: the owner renders the entry whose key matches the page it is
+   * drawing. A list slot takes `id` instead.
+   */
+  key?: string
   /** Sort position among the slot's entries. */
   order?: number
   /** Localized label, used for list slots. */

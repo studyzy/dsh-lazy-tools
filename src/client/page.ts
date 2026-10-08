@@ -1,8 +1,8 @@
 /**
- * The lazy-tools settings form, rendered as a tab inside "Built-in plugins".
+ * The lazy-tools configuration, rendered as this plugin's page on the Plugins page.
  *
  * The page is a thin view over {@link LazyToolsController}: it draws the plugin's
- * seven fields and hands every interaction back as an action. It renders the
+ * six fields and hands every interaction back as an action. It renders the
  * shared `SettingsForm` frame so it matches the other settings pages — one save
  * control, staged edits, the read-only and unavailable notices — rather than
  * inventing its own chrome.
@@ -35,18 +35,23 @@ import type { LazyToolsPageFace, LazyToolsProjection } from './controller.ts'
 export const primitives = { SettingsForm, SettingsValueField }
 
 /**
- * The plugin's settings form, as the Built-in plugins tab renders it.
+ * The plugin's configuration entry, as the Plugins page renders it.
  *
- * Unlike the Plugins page's `plugins.item` slot — which calls its entry once
- * with `view: 'summary'` for a card subtitle and once with `view: 'page'` for
- * the detail form — the `settings.plugins.tab` slot renders this component once,
- * as the tab panel itself, and passes no view discriminator and no `form` prop:
- * the tab panel is the form.
+ * The `plugins.item` slot calls its entry twice: once with `view: 'summary'`
+ * for the one-liner under the card's title, and once with `view: 'page'` for
+ * the body of the plugin's own page. Both must be handled, and the summary
+ * branch must come first — rendering the form into the card would put the whole
+ * configuration in the list, and returning the subtitle from the page branch
+ * would leave the detail page with a stray sentence instead of a form.
  * @param props - the page's copy, its snapshot, and its actions.
- * @returns the settings form.
+ * @returns the card's one-liner, or the settings form.
  */
 export function LazyToolsCard(props: LazyToolsCardProps): unknown {
   const { t } = props
+  // The summary view draws one line of copy and no controls, so it must not
+  // subscribe to the form: the card is rendered once per visit to the list, and
+  // a store subscription there would be created and dropped for a string.
+  if (props.view === 'summary') return t('description')
   const state = props.useLazyTools((snapshot) => snapshot)
   const disabled = !state.writable
   const labels = {
@@ -136,6 +141,13 @@ export function LazyToolsCard(props: LazyToolsCardProps): unknown {
 
 /** Props the slot renderer supplies to {@link LazyToolsCard}. */
 export interface LazyToolsCardProps {
+  /**
+   * Which half of the page is being drawn.
+   *
+   * `summary` asks for the card's one-liner alone; `page` asks for the form
+   * that is the body of the plugin's own page.
+   */
+  view: 'summary' | 'page'
   /** This page's bound locale reader. */
   t(key: string): string
   /** The store hook the slot's business share provides. */

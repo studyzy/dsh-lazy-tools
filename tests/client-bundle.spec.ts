@@ -63,14 +63,22 @@ function loadBundle(): ClientFace {
 interface StubLog {
   watched: readonly string[]
   formFor?: string
-  slot?: string
-  entries: { id?: string; order?: number; label?: string; locale?: string }[]
+  slots: string[]
+  entries: {
+    slot?: string
+    id?: string
+    key?: string
+    order?: number
+    label?: string
+    locale?: string
+    inject?: () => object
+  }[]
   dictionaries: string[]
 }
 
 /** Drive the bundle's `apply` against stubbed browser services. */
 function runApply(face: ClientFace): StubLog {
-  const log: StubLog = { watched: [], entries: [], dictionaries: [] }
+  const log: StubLog = { watched: [], slots: [], entries: [], dictionaries: [] }
   const form = {
     getSnapshot: () => ({ status: 'ready', writable: true, revision: 1, value: {}, base: {}, user: {} }),
     subscribe: () => () => {},
@@ -100,15 +108,26 @@ function runApply(face: ClientFace): StubLog {
     },
     slots: {
       inject(_name: string, register: () => () => void) {
-        log.slot = _name
+        log.slots.push(_name)
         return register()
       },
-      register(options: { id?: string; order?: number; label?: () => string; locale?: string }) {
+      register(options: {
+        name: string
+        id?: string
+        key?: string
+        order?: number
+        label?: () => string
+        locale?: string
+        inject?: () => object
+      }) {
         log.entries.push({
+          slot: options.name,
           id: options.id,
+          key: options.key,
           order: options.order,
           label: options.label?.(),
           locale: options.locale,
+          inject: options.inject,
         })
         return () => {}
       },
@@ -142,14 +161,48 @@ describe.skipIf(!built)('built client bundle', () => {
     }
   })
 
-  it('registers the page into the Built-in plugins tab list while the namespace is served', () => {
+  it('registers the configuration form on both Plugins-page surfaces', () => {
+    // Two registrations, because the Plugins page files this plugin as a
+    // package card (it is a profile dependency) AND as an official-plugin card.
+    // Registering only one leaves whichever page the user opens without a form,
+    // and nothing at build time would say so.
     const log = runApply(face)
     expect(log.watched).toEqual(['lazy-tools'])
     expect(log.formFor).toBe('lazy-tools')
-    expect(log.slot).toBe('settings.plugins.tab')
-    expect(log.entries).toEqual([
-      { id: 'lazy-tools', order: 40, label: 'settings.lazyTools.title', locale: 'settings.lazyTools' },
-    ])
+    expect(log.slots).toEqual(['plugins.item', 'plugins.bundle.config'])
     expect(log.dictionaries).toEqual(['settings.lazyTools'])
+
+    const [item, bundle] = log.entries
+    expect(item).toMatchObject({
+      slot: 'plugins.item',
+      id: 'lazy-tools',
+      order: 40,
+      label: 'settings.lazyTools.title',
+      locale: 'settings.lazyTools',
+    })
+    expect(bundle).toMatchObject({
+      slot: 'plugins.bundle.config',
+      key: packageName,
+      locale: 'settings.lazyTools',
+    })
+    // The package page asks only for `view: 'page'`, so this entry carries no
+    // id, order, or label; it is addressed by its key alone.
+    expect(bundle?.id).toBeUndefined()
+    expect(bundle?.label).toBeUndefined()
+  })
+
+  it('shares one controller face across both surfaces', () => {
+    // Both pages must read and stage through the SAME controller. Two
+    // controllers over one namespace would give each page its own draft map, so
+    // an edit staged on the Official card would be invisible on the package
+    // page and a save there would write nothing.
+    //
+    // The comparison is on what the `inject` functions RETURN, not on the
+    // functions: each is its own closure over the shared face, so identity of
+    // the closures would prove nothing either way.
+    const log = runApply(face)
+    const [item, bundle] = log.entries
+    expect(item?.inject).toBeDefined()
+    expect(item?.inject?.()).toBe(bundle?.inject?.())
   })
 })

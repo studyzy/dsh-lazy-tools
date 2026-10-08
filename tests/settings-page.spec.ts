@@ -227,12 +227,23 @@ interface RenderedField {
  * The shared primitives are swapped for recorders through the page's own seam,
  * so this observes exactly what would be drawn: which controls, with which
  * staged text, and which are marked overridden.
+ *
+ * The Plugins page calls a `plugins.item` entry twice, so the harness renders
+ * the `page` view by default — that is the render that draws the form — and
+ * callers needing the card's one-liner pass `view: 'summary'`. Both are
+ * exercised because a wrong branch here is invisible to the type checker: the
+ * slot component is cast at the registration site and returns `unknown`.
  * @param options - the namespace state to serve.
- * @returns the rendered controls, the card's subtitle, and the form state.
+ * @param view - which half of the page to render; defaults to the form.
+ * @returns the rendered controls, the form state, and what the entry returned.
  */
-function renderPage(options: Parameters<typeof stubForm>[0] = {}): {
+function renderPage(
+  options: Parameters<typeof stubForm>[0] = {},
+  view: 'summary' | 'page' = 'page',
+): {
   fields: RenderedField[]
   state: Record<string, unknown>
+  rendered: unknown
 } {
   const { form } = stubForm(options)
   const page = new LazyToolsController(form)
@@ -255,6 +266,7 @@ function renderPage(options: Parameters<typeof stubForm>[0] = {}): {
     return props.id
   }
   const props = {
+    view,
     t: (key: string) => key,
     useLazyTools: (selector: (snapshot: unknown) => unknown) => selector(face.hooks.lazyTools.getSnapshot()),
     edit: face.edit,
@@ -262,9 +274,9 @@ function renderPage(options: Parameters<typeof stubForm>[0] = {}): {
     save: face.save,
     discard: face.discard,
   }
-  LazyToolsCard(props)
+  const rendered = LazyToolsCard(props)
   page.dispose()
-  return { fields, state }
+  return { fields, state, rendered }
 }
 
 describe('rendered page', () => {
@@ -334,13 +346,17 @@ describe('rendered page', () => {
     expect(byLabel.get('noDefer')?.overridden).toBe(false)
   })
 
-  it('always renders the form, since the tab slot has no summary view', () => {
-    // `settings.plugins.tab` renders its entry once as the tab panel, unlike the
-    // Plugins page's `plugins.item`, which calls the same component twice with a
-    // `view` discriminator. A `view`-dependent branch here would therefore be
-    // dead code in production and is deliberately absent.
-    const { fields } = renderPage({})
-    expect(fields).toHaveLength(6)
+  it('renders the form only for the page view, and the one-liner only for the summary', () => {
+    // The Plugins page renders a `plugins.item` entry twice: `summary` for the
+    // card's one-liner and `page` for the body of the plugin's own detail page.
+    // Getting the branches the wrong way round is silent — the registration
+    // casts the component — so both directions are asserted.
+    const page = renderPage({})
+    expect(page.fields).toHaveLength(6)
+
+    const summary = renderPage({}, 'summary')
+    expect(summary.fields).toHaveLength(0)
+    expect(summary.rendered).toBe('description')
   })
 
   it('disables every control on a read-only deployment', () => {

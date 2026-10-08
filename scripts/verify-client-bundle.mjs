@@ -124,7 +124,7 @@ check('exports the edited namespace', typeof face.LAZY_TOOLS_NS === 'string', fa
 check('exports en and zh dictionaries', Boolean(face.locales?.en && face.locales?.zh))
 
 // --- Apply: what the page actually registers ------------------------------
-const seen = { dictionaries: [], watched: [], entries: [] }
+const seen = { dictionaries: [], watched: [], slots: [], entries: [] }
 const snapshot = { status: 'ready', writable: true, revision: 1, value: {}, base: {}, user: {} }
 try {
   face.apply({
@@ -138,9 +138,16 @@ try {
       whileServed: (namespaces, register) => { seen.watched = [...namespaces]; return register(new Set(namespaces)) },
     },
     slots: {
-      inject: (name, register) => { seen.slot = name; return register() },
+      inject: (name, register) => { seen.slots.push(name); return register() },
       register: (options) => {
-        seen.entries.push({ id: options.id, order: options.order, locale: options.locale })
+        seen.entries.push({
+          slot: options.name,
+          id: options.id,
+          key: options.key,
+          order: options.order,
+          locale: options.locale,
+          inject: options.inject,
+        })
         return () => {}
       },
     },
@@ -153,8 +160,33 @@ try {
 
 check('registers exactly one dictionary namespace', seen.dictionaries.length === 1, seen.dictionaries.join(', '))
 check('follows the plugin namespace while served', seen.watched.includes(seen.formFor), `${seen.watched} / ${seen.formFor}`)
-check('registers into the Built-in plugins tab list', seen.slot === 'settings.plugins.tab', String(seen.slot))
-check('registers exactly one settings tab', seen.entries.length === 1, JSON.stringify(seen.entries))
+// The form appears on two surfaces, because the Plugins page files a profile
+// dependency as a package card as well as an official-plugin card. Missing
+// either one is invisible at build time — the page just shows no form.
+check(
+  'registers the configuration form on both surfaces',
+  seen.slots.includes('plugins.item') && seen.slots.includes('plugins.bundle.config'),
+  seen.slots.join(', '),
+)
+const itemEntry = seen.entries.find((entry) => entry.slot === 'plugins.item')
+const bundleEntry = seen.entries.find((entry) => entry.slot === 'plugins.bundle.config')
+check('registers the official-plugin card by its own id', itemEntry?.id === 'lazy-tools', JSON.stringify(itemEntry ?? null))
+check(
+  'registers the package page under this package name',
+  bundleEntry?.key === packageName,
+  JSON.stringify(bundleEntry ?? null),
+)
+// Both surfaces must share one face, or an edit staged on one page would be
+// invisible to the other and a save on the wrong page would write nothing.
+// Compared on what `inject` RETURNS: each registration gets its own closure
+// over the shared face, so the closures legitimately differ.
+const itemFace = itemEntry?.inject?.()
+const bundleFace = bundleEntry?.inject?.()
+check(
+  'shares one controller face across both surfaces',
+  itemFace !== undefined && itemFace === bundleFace,
+  itemFace === bundleFace ? 'same object' : 'DIFFERENT objects',
+)
 
 report()
 process.exit(failures.length === 0 ? 0 : 1)

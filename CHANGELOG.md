@@ -7,13 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **The configuration page now lives on the Plugins page.** It moved from
+  **Settings → Built-in plugins**, where it was a **Lazy tools** tab, to a
+  **Lazy tools** card in the Plugins page's **Official plugins** group: clicking
+  the card opens the plugin's own configuration page. That is the placement the
+  **Subagent** plugin uses, and it puts configuration where a user looks for it —
+  the Plugins page — instead of beside the installation's read-only inventory.
+  The registration moved from the `settings.plugins.tab` slot to `plugins.item`,
+  so the entry now serves the slot's two views: `summary` for the card's
+  one-liner and `page` for the configuration form itself. Nothing about the
+  fields, their save semantics, or the live-config behaviour changed.
+- **The form also renders on the plugin's package page.** Because this plugin is
+  a profile dependency rather than a bundle the installation supplies, the
+  Plugins page files it in **two** places: as an installed *package* in the
+  **Installed** group — whose detail page showed a description, a row list, and
+  an enable switch but no way to configure anything — and as an official plugin
+  in the **Official plugins** group. It therefore also registers
+  `plugins.bundle.config`, keyed by the package name, which puts the form on the
+  package page itself (above the parts list). The Official group's card is still
+  registered, and both surfaces render the **same component over one shared
+  controller**, so an edit staged on either page is visible on the other and a
+  save is a single revision-fenced write. The **Subagent** plugin has no such
+  second surface, which is why comparing the two did not reveal it.
+
 ### Added
 
 - **Settings page in the Web/Desktop UI.** The plugin now ships a browser half
-  (`dsh.client` plus `lib/client.js`) that renders a **Lazy tools** tab under
-  **Settings → Built-in plugins**, beside the feature-owned configuration tabs
-  the installation already ships (the read-only inventory, the suggested-prompt
-  route card). All six configuration fields
+  (`dsh.client` plus `lib/client.js`) that renders the **Lazy tools**
+  configuration page, opened from its card in the Plugins page's **Official
+  plugins** group (`plugins.item`). All six configuration fields
   are editable there — `defer` and `noDefer` as comma-separated boxes, the
   auto-tune switch, and the three auto-tune numbers — with staged edits, a
   per-field **Overridden** badge and **Reset to default**, and a single save. The

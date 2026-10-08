@@ -1,5 +1,5 @@
 /**
- * Browser half of the dsh-lazy-tools settings page.
+ * Browser half of the dsh-lazy-tools configuration page.
  *
  * The page edits this plugin's defer configuration from the Web/Desktop UI.
  * It is the browser counterpart of `src/index.ts`: the Host half publishes its
@@ -11,11 +11,14 @@
  * - The package declares `dsh.client` in `package.json`, so `dsh-client-modules`
  *   serves `lib/client.js` to the browser and attaches it to the Loader row for
  *   the bare package name. Switching the row off removes the page with it.
- * - The page registers into `settings.plugins.tab`, the tab list inside the
- *   Settings section's "Built-in plugins" page, so it sits beside the other
- *   feature-owned configuration tabs (the read-only inventory, and plugins such
- *   as the suggested-prompt route card) rather than on the Plugins page, which
- *   is for installing and enabling packages rather than configuring them.
+ * - The page registers into `plugins.item`, the slot the Plugins page lists
+ *   official plugins in: this plugin gains a card there whose one-liner comes
+ *   from the entry's `view: 'summary'` render, and whose detail page — reached
+ *   by clicking the card — is the entry's `view: 'page'` render, i.e. the
+ *   configuration form. That is the same placement the Subagent and Shell
+ *   plugins use, and it is where a user looks to configure a plugin rather than
+ *   in the Settings section's "Built-in plugins" page, which is for the
+ *   installation's own inventory.
  * - It registers through `configForms.whileServed`, so the page exists only while
  *   the Host actually serves the `lazy-tools` namespace. A deployment that never
  *   mounted the plugin shows no trace of the page.
@@ -42,6 +45,37 @@ export const LAZY_TOOLS_NS = 'lazy-tools'
 
 /** Dictionary namespace owned by this plugin. */
 const NS = 'settings.lazyTools'
+
+/**
+ * This plugin's id in the Plugins page's `plugins.item` list.
+ *
+ * Also a display identity: the page uses it for the `data-plugin-item`
+ * attribute on the card and the detail page, and — for the four ids the
+ * installation ships artwork for — to pick the card's icon. `lazy-tools` has no
+ * entry in that artwork table, so the page falls back to its generic plugin
+ * mark, which is the intended look for a third-party plugin.
+ */
+const ITEM_ID = 'lazy-tools'
+
+/**
+ * This plugin's place among the official plugins: after the installation's own
+ * four (`shell` 10, `agent-loop` 20, `subagent` 30, `web-search` has no order
+ * of its own and sorts by registration), leaving the first block to the plugins
+ * the harness ships and putting contributed plugins after them.
+ */
+const ITEM_ORDER = 40
+
+/**
+ * This package's name, which is the key a bundle's own configuration registers
+ * under.
+ *
+ * Spelled as a literal rather than imported from `package.json`, because the
+ * client bundle is a browser artifact: pulling the manifest in would either
+ * inline the whole file or need a bundler-specific JSON import, and the value
+ * cannot drift without silently losing the registration — the package would
+ * simply stop appearing, which is exactly what a test here asserts against.
+ */
+const PACKAGE_NAME = '@deepseek-ai/dsh-lazy-tools'
 
 /** Services this browser plugin requires. */
 export const inject = ['slots', 'locale', 'configForms'] as const
@@ -118,30 +152,67 @@ export function apply(ctx: Context): void {
 }
 
 /**
- * Build the page's controller and register it into the Plugins list.
+ * Build the page's controller and register the form in both places the Plugins
+ * page can show it.
+ *
+ * Two registrations, one controller, because the Plugins page files this plugin
+ * under **two different cards** and a user can reasonably open either:
+ *
+ * - `plugins.item` lists the plugin among the official plugins by its own id,
+ *   which is where a plugin that ships configuration normally shows up. That is
+ *   the placement the Subagent plugin uses.
+ * - `plugins.bundle.config` puts the same form on the plugin's **package** page,
+ *   keyed by package name. This plugin needs it because it is a profile
+ *   dependency rather than a bundle the installation supplies: the page files a
+ *   profile dependency under its "Installed" group as a package card, so the
+ *   package detail page — the card most users open first, since it carries the
+ *   enable switch — would otherwise show a description and a row list with no
+ *   way to configure anything. Subagent never hits this because the app supplies
+ *   it, so it never gets a package card of its own.
+ *
+ * Registering the same component under both keys is not duplication of the
+ * form: `view: 'page'` is the only view either key asks for, and both are
+ * rendered with the same controller, so an edit made on one page is staged in
+ * the same place and saved by the same revision-fenced write. An edit cannot
+ * be "lost" between them because both surfaces read one store.
  *
  * Kept separate from {@link apply} so the disposer `whileServed` returns is
- * exactly what unregisters the page when the Host stops serving the namespace.
+ * exactly what unregisters both when the Host stops serving the namespace.
  * @param ctx - the browser plugin context.
- * @returns the disposer removing the page.
+ * @returns the disposer removing the registrations.
  */
 function registerPage(ctx: Context): () => void {
   const controller = new LazyToolsController(ctx.configForms.get(LAZY_TOOLS_NS))
-  const off = ctx.slots.inject('settings.plugins.tab', () =>
+  const face = controller.inject()
+  const item = ctx.slots.inject('plugins.item', () =>
     ctx.slots.register(
       {
-        name: 'settings.plugins.tab',
-        id: 'lazy-tools',
-        order: 40,
+        name: 'plugins.item',
+        id: ITEM_ID,
+        order: ITEM_ORDER,
         label: () => ctx.locale.bind(NS)('title'),
         locale: NS,
-        inject: () => controller.inject(),
+        inject: () => face,
+      },
+      LazyToolsCard as never,
+    ),
+  )
+  // Keyed by package name, and asked for `view: 'page'` only: the package page
+  // renders one configuration section, with no summary render to answer.
+  const bundle = ctx.slots.inject('plugins.bundle.config', () =>
+    ctx.slots.register(
+      {
+        name: 'plugins.bundle.config',
+        key: PACKAGE_NAME,
+        locale: NS,
+        inject: () => face,
       },
       LazyToolsCard as never,
     ),
   )
   return () => {
-    off()
+    item()
+    bundle()
     controller.dispose()
   }
 }

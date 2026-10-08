@@ -167,9 +167,21 @@ Modifiers are case-insensitive (`defer(bash)` ≡ `Defer(bash)`). Precedence
 ### Configuring it in the UI
 
 Web and Desktop also ship a visual page, so none of this needs hand-written YAML:
-open **Settings → Built-in plugins** and switch to the **Lazy tools** tab. It sits
-beside the other feature-owned configuration tabs (the read-only inventory, the
-suggested-prompt route card).
+open **Settings → Plugins** and take **either** route —
+
+- the **Lazy tools** card in the **Official plugins** group, the same placement
+  the **Subagent** plugin uses; or
+- the **`@deepseek-ai/dsh-lazy-tools`** package card in the **Installed** group,
+  where the configuration form sits above the parts list.
+
+Both routes render the **same form over the same draft**: an edit on one is
+visible on the other, and a save is a single write.
+
+> Why two routes: this plugin is a **profile dependency** (a `link:` entry), so
+> the Plugins page lists it as an installed *package* — with a package card —
+> *and* as an official plugin with a configuration card. **Subagent** never hits
+> this because the app supplies it (not installed), so it gets no package card at
+> all. Both are registered so that whichever card you open can be configured.
 
 Its six fields map one-to-one onto the table above. `defer` and `noDefer` are
 **comma-separated** boxes (for example `Defer(*), web_fetch, glob`); newlines work
@@ -200,7 +212,7 @@ very next request uses the new rules.
 
 > The page comes from the plugin's own browser half (`dsh.client` declaration plus
 > `lib/client.js`) and appears only while the Host has the plugin loaded. A
-> headless composition has no page and shows no tab.
+> headless composition has no page and shows no card.
 
 ## Configuration layers: global + per-project
 

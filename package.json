@@ -65,6 +65,7 @@
     "token-saving"
   ],
   "scripts": {
+    "prepare": "pnpm run build",
     "build": "tsc -p tsconfig.json && tsdown",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "typecheck:tests": "tsc -p tsconfig.test.json",

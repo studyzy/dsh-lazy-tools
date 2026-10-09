@@ -188,6 +188,19 @@ check(
   itemFace === bundleFace ? 'same object' : 'DIFFERENT objects',
 )
 
+// A git install ships whatever the repository tracks, NOT what `files` lists:
+// `lib/` is gitignored, so without a `prepare` script a `git:`/`github:` install
+// lands an unbuilt package whose `main`, `exports["./client"]`, and
+// `dsh.bundle.patch` all dangle. Nothing in the build or test run notices,
+// because locally `lib/` exists. This is the packaging analogue of the checks
+// above: it fails only for someone installing from the repository.
+const prepareScript = pkg.scripts?.prepare
+check(
+  'declares a prepare script so git installs build lib/',
+  typeof prepareScript === 'string' && prepareScript.trim() !== '',
+  prepareScript ?? 'MISSING — a git install would ship no lib/',
+)
+
 report()
 process.exit(failures.length === 0 ? 0 : 1)
 

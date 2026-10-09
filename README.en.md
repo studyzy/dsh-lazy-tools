@@ -90,9 +90,17 @@ or OpenAI's deferred-tool input items.
 Install from the GitHub repository as an external bundle:
 
 ```bash
-dsh plugin --profile <profile> add git:github.com/studyzy/dsh-lazy-tools
+dsh plugin --profile <profile> add github:studyzy/dsh-lazy-tools
 ```
 
+> `git:github.com/...` is not valid pnpm syntax — it is treated as an SSH
+> remote and fails with `Could not read from remote repository` on machines
+> without a GitHub SSH key. Use `github:user/repo` (or
+> `git+https://github.com/user/repo.git`) to go over HTTPS.
+>
+> **Restart DSH after installing**: bundle layers load only at startup, so the
+> running process will not pick the plugin up.
+>
 > You may also `git clone` it locally and install from the directory. The
 > bundle injects a plugin named `lazy-tools` via `cordis.patch.yml`.
 
@@ -100,17 +108,19 @@ dsh plugin --profile <profile> add git:github.com/studyzy/dsh-lazy-tools
 
 This plugin targets **DeepSeek Harness 0.2.0-rc.2** (`@deepseek-ai/dsh-*`
 0.2.0-rc.2, `@deepseek-ai/cordis` 4.0.4, `@deepseek-ai/schemastery` 3.18.4).
-Those exact versions are declared in `peerDependencies`, so DSH's plugin
-compatibility preflight accepts the bundle:
+Those exact versions are declared in `peerDependencies`, matching the runtime
+dependencies DSH ships, so `pnpm peers check` reports no missing peers for this
+plugin:
 
 ```bash
 # local directory install (refresh the profile dependency tree after changing deps)
 dsh plugin --profile <profile> add link:/path/to/dsh-lazy-tools
 ```
 
-> If a DSH upgrade reports mismatched peers, align `peerDependencies` /
-> `devDependencies` to the new `@deepseek-ai/dsh-*` versions, rerun
-> `pnpm install && pnpm run check`, then repeat the `add` command above.
+> If a DSH upgrade makes `pnpm peers check` report mismatched peers for this
+> plugin, align `peerDependencies` / `devDependencies` to the new
+> `@deepseek-ai/dsh-*` versions, rerun `pnpm install && pnpm run check`, then
+> repeat the `add` command above.
 
 ## Configuration
 

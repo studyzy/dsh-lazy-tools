@@ -78,9 +78,15 @@ Anthropic `tool_reference` 或 OpenAI 的 deferred-tool input items）。
 从 GitHub 仓库安装为外部 bundle：
 
 ```bash
-dsh plugin --profile <profile> add git:github.com/studyzy/dsh-lazy-tools
+dsh plugin --profile <profile> add github:studyzy/dsh-lazy-tools
 ```
 
+> `git:github.com/...` 不是合法的 pnpm 语法——它会被当成 SSH 远端，在没配
+> GitHub SSH key 的机器上报 `Could not read from remote repository`。用
+> `github:user/repo`（或 `git+https://github.com/user/repo.git`）走 HTTPS。
+>
+> 安装后**需要重启 DSH**：bundle 层只在启动时加载，当前进程不会热加载。
+>
 > 也可以先 `git clone` 到本地，再从本地目录安装。该 bundle 通过
 > `cordis.patch.yml` 注入一个名为 `lazy-tools` 的插件。
 
@@ -88,17 +94,18 @@ dsh plugin --profile <profile> add git:github.com/studyzy/dsh-lazy-tools
 
 本插件面向 **DeepSeek Harness 0.2.0-rc.2**（`@deepseek-ai/dsh-*` 0.2.0-rc.2、
 `@deepseek-ai/cordis` 4.0.4、`@deepseek-ai/schemastery` 3.18.4）。
-`package.json` 的 `peerDependencies` 声明了这些精确版本，因此 DSH 的
-插件兼容性预检会直接放行：
+`package.json` 的 `peerDependencies` 声明了这些精确版本，与 DSH 内置的
+运行时依赖一致，因此安装时 `pnpm peers check` 不会报出本插件的 peer 缺失：
 
 ```bash
 # 本地目录安装（开发时更新依赖后刷新 profile 依赖树）
 dsh plugin --profile <profile> add link:/path/to/dsh-lazy-tools
 ```
 
-> 升级 DSH 后若预检提示 peer 版本不匹配，把 `package.json` 的
-> `peerDependencies` / `devDependencies` 对齐到新的 `@deepseek-ai/dsh-*`
-> 版本，重新 `pnpm install && pnpm run check`，再执行一次上面的 `add` 即可。
+> 升级 DSH 后若 `pnpm peers check` 提示本插件 peer 版本不匹配，把
+> `package.json` 的 `peerDependencies` / `devDependencies` 对齐到新的
+> `@deepseek-ai/dsh-*` 版本，重新 `pnpm install && pnpm run check`，
+> 再执行一次上面的 `add` 即可。
 
 ## 配置
 

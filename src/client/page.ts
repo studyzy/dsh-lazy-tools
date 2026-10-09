@@ -11,7 +11,7 @@
  * package, imported as a bundle external. That is deliberate: reusing them is
  * what keeps this page's save semantics, conflict handling, and reset behavior
  * identical to the pages the installation already ships.
- * @module @deepseek-ai/dsh-lazy-tools/client/page
+ * @module @studyzy/dsh-lazy-tools/client/page
  */
 
 import { SettingsForm, SettingsValueField } from '@deepseek-ai/dsh-client-ui-primitives'

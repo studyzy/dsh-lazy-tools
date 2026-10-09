@@ -133,7 +133,7 @@ dsh plugin --profile <profile> add link:/path/to/dsh-lazy-tools
 
 ```yaml
 - id: lazy-tools
-  name: '@deepseek-ai/dsh-lazy-tools'
+  name: '@studyzy/dsh-lazy-tools'
   config:
     defer: ['glob', 'web_search', 'Defer(fetch_*)']
     noDefer: ['bash']
@@ -161,7 +161,7 @@ Web / 桌面版还有一块可视化配置页，不用手写 YAML：打开 **设
 
 - **官方插件** 分组里的 **懒加载工具（Lazy tools）** 卡片 —— 与 **子智能体（Subagent）**
   插件的配置入口一致；
-- **已安装** 分组里的 **`@deepseek-ai/dsh-lazy-tools`** 包卡片（点进去后，配置表单就在
+- **已安装** 分组里的 **`@studyzy/dsh-lazy-tools`** 包卡片（点进去后，配置表单就在
   「包含的组件」列表上方）。
 
 两处渲染的是**同一个表单、同一份草稿**：在哪边改都一样，保存也是一次写入。

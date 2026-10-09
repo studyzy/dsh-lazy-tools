@@ -24,7 +24,7 @@ import { defineConfig } from 'tsdown'
  * wrapper is small and its contract is stable: register one factory under the
  * package name, and let `require` resolve the externals.
  */
-const CLIENT_ID = '@deepseek-ai/dsh-lazy-tools'
+const CLIENT_ID = '@studyzy/dsh-lazy-tools'
 
 /** Modules the browser kernel provides; none may be bundled into the client half. */
 const CLIENT_EXTERNALS = [

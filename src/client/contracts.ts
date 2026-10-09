@@ -12,7 +12,7 @@
  * relies on rather than to a released version of it. Anything not declared here
  * is a signal that the page is reaching for behavior no other settings page
  * uses.
- * @module @deepseek-ai/dsh-lazy-tools/client/contracts
+ * @module @studyzy/dsh-lazy-tools/client/contracts
  */
 
 /** A component the slot renderer can mount. */

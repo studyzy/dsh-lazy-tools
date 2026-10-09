@@ -21,7 +21,7 @@
  * an entry uses it; every other project falls back to the global configuration
  * unchanged. Writes are atomic and read-modify-write, so two projects tuning
  * concurrently cannot lose each other's entries.
- * @module @deepseek-ai/dsh-lazy-tools/project-config
+ * @module @studyzy/dsh-lazy-tools/project-config
  */
 
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'

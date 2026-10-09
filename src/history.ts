@@ -16,7 +16,7 @@
  * A `defer_execute_tool` call counts as usage of the tool it activates: the
  * model reaching for a deferred tool is exactly the signal that says "this one
  * should not have been deferred".
- * @module @deepseek-ai/dsh-lazy-tools/history
+ * @module @studyzy/dsh-lazy-tools/history
  */
 
 import { readdir, readFile } from 'node:fs/promises'

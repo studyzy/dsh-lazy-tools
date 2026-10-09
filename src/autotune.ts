@@ -20,7 +20,7 @@
  * Writing goes through `ctx.configEditor` — the supported profile-edit path
  * that validates, writes atomically, and reconciles the loader. A composition
  * without that editor logs its recommendation and changes nothing.
- * @module @deepseek-ai/dsh-lazy-tools/autotune
+ * @module @studyzy/dsh-lazy-tools/autotune
  */
 
 import type { Context } from '@deepseek-ai/cordis'

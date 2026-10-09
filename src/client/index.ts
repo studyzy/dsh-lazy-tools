@@ -26,7 +26,7 @@
  * All wiring goes through cordis services (`slots`, `locale`, `configForms`) and
  * the shared primitives package; no cross-plugin value imports are used, which is
  * what the client bundle purity gate requires.
- * @module @deepseek-ai/dsh-lazy-tools/client
+ * @module @studyzy/dsh-lazy-tools/client
  */
 
 import type { Context } from '@deepseek-ai/cordis'
@@ -75,7 +75,7 @@ const ITEM_ORDER = 40
  * cannot drift without silently losing the registration — the package would
  * simply stop appearing, which is exactly what a test here asserts against.
  */
-const PACKAGE_NAME = '@deepseek-ai/dsh-lazy-tools'
+const PACKAGE_NAME = '@studyzy/dsh-lazy-tools'
 
 /** Services this browser plugin requires. */
 export const inject = ['slots', 'locale', 'configForms'] as const

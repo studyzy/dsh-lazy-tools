@@ -48,7 +48,7 @@ id-targeted override of the `lazy-tools` row:
 
 ```yaml
 - id: lazy-tools
-  name: '@deepseek-ai/dsh-lazy-tools'
+  name: '@studyzy/dsh-lazy-tools'
   config:
     defer: ['Defer(*)']
     noDefer: ['bash']

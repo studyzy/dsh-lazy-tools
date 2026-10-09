@@ -31,7 +31,7 @@
  *
  * ```yaml
  * - id: lazy-tools
- *   name: '@deepseek-ai/dsh-lazy-tools'
+ *   name: '@studyzy/dsh-lazy-tools'
  *   config:
  *     defer: ['Defer(fetch_*)', 'web_search']
  *     noDefer: ['bash']
@@ -58,7 +58,7 @@
  * `~/.dsh/lazy-tools/projects.json`, which replaces the pattern pair for that
  * project only. Hand-written global rules are therefore never clobbered by a
  * scan of some other repository.
- * @module @deepseek-ai/dsh-lazy-tools
+ * @module @studyzy/dsh-lazy-tools
  */
 
 import type { Context } from '@deepseek-ai/cordis'

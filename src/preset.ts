@@ -12,7 +12,7 @@
  * bundle that reached through `config.ts` would fail to load in the page. This
  * module deliberately imports nothing, which keeps the client's dependency
  * surface exactly the shell-provided externals.
- * @module @deepseek-ai/dsh-lazy-tools/preset
+ * @module @studyzy/dsh-lazy-tools/preset
  */
 
 /**

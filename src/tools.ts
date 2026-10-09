@@ -4,7 +4,7 @@
  * Both tools are registered per-agent on the agent's own scope, so they are
  * themselves never deferred. They operate on the per-agent state through an
  * injected accessor to keep this module free of agent-lifecycle plumbing.
- * @module @deepseek-ai/dsh-lazy-tools/tools
+ * @module @studyzy/dsh-lazy-tools/tools
  */
 
 import { defineTool } from '@deepseek-ai/dsh-tools'

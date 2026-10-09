@@ -1,8 +1,7 @@
 {
-  "name": "@deepseek-ai/dsh-lazy-tools",
+  "name": "@studyzy/dsh-lazy-tools",
   "description": "CodeBuddy-style deferred tool loading for DeepSeek Harness: keep tool schemas out of the model context until the model loads them on demand via tool_search / defer_execute_tool.",
   "version": "0.0.1",
-  "private": true,
   "type": "module",
   "packageManager": "pnpm@11.7.0",
   "engines": {

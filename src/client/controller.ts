@@ -12,7 +12,7 @@
  * settings wire models a list replacement. Writing the array wholesale (rather
  * than per index) keeps a save to one atomic operation, so a partially applied
  * edit — half a list — is not a reachable state.
- * @module @deepseek-ai/dsh-lazy-tools/client/controller
+ * @module @studyzy/dsh-lazy-tools/client/controller
  */
 
 import type { ConfigForm, ConfigFormSnapshot, FieldSpec, SettingsFieldState, SettingsFormState } from './contracts.ts'

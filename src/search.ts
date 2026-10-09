@@ -5,7 +5,7 @@
  * name token > description token), sufficient for on-demand discovery. The
  * BM25 implementation in dsh-tool-search is a possible upgrade but is not
  * needed for the initial version.
- * @module @deepseek-ai/dsh-lazy-tools/search
+ * @module @studyzy/dsh-lazy-tools/search
  */
 
 import type { ToolSchema } from '@deepseek-ai/dsh-llm'

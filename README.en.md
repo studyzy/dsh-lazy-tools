@@ -152,7 +152,7 @@ CodeBuddy-style syntax:
 
 ```yaml
 - id: lazy-tools
-  name: '@deepseek-ai/dsh-lazy-tools'
+  name: '@studyzy/dsh-lazy-tools'
   config:
     defer: ['glob', 'web_search', 'Defer(fetch_*)']
     noDefer: ['bash']
@@ -181,7 +181,7 @@ open **Settings → Plugins** and take **either** route —
 
 - the **Lazy tools** card in the **Official plugins** group, the same placement
   the **Subagent** plugin uses; or
-- the **`@deepseek-ai/dsh-lazy-tools`** package card in the **Installed** group,
+- the **`@studyzy/dsh-lazy-tools`** package card in the **Installed** group,
   where the configuration form sits above the parts list.
 
 Both routes render the **same form over the same draft**: an edit on one is

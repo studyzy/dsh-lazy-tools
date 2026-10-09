@@ -19,7 +19,7 @@ import { beforeAll, describe, expect, it } from 'vitest'
 
 const packageRoot = join(dirname(fileURLToPath(import.meta.url)), '..')
 const bundlePath = join(packageRoot, 'lib/client.js')
-const packageName = '@deepseek-ai/dsh-lazy-tools'
+const packageName = '@studyzy/dsh-lazy-tools'
 const PRIMITIVES = '@deepseek-ai/dsh-client-ui-primitives'
 
 /** The bundle's exported face, as the kernel materializes it. */

@@ -19,7 +19,7 @@
  *    live config edit. The plugin uses it to re-rank live agents, since a
  *    volatile write updates the running config in place instead of remounting
  *    the plugin and re-running `apply`.
- * @module @deepseek-ai/dsh-lazy-tools/settings
+ * @module @studyzy/dsh-lazy-tools/settings
  */
 
 import type { Fiber } from '@deepseek-ai/cordis'

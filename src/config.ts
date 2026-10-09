@@ -15,7 +15,7 @@
  * There is deliberately no separate "enable deferring" switch: an empty `defer`
  * list already expresses "defer nothing" exactly, so a second boolean could only
  * disagree with it. "Turn the feature off" is written `defer: []`.
- * @module @deepseek-ai/dsh-lazy-tools/config
+ * @module @studyzy/dsh-lazy-tools/config
  */
 
 import { RUN_CODE_NAME } from '@deepseek-ai/dsh-tools'

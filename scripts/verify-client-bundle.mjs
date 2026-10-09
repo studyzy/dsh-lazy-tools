@@ -14,7 +14,7 @@
  * two halves of the declaration are easy to update independently by accident.
  *
  * Usage: node scripts/verify-client-bundle.mjs
- * @module @deepseek-ai/dsh-lazy-tools/scripts/verify-client-bundle
+ * @module @studyzy/dsh-lazy-tools/scripts/verify-client-bundle
  */
 
 import { existsSync, readFileSync } from 'node:fs'
